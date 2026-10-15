@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>MouseSave</AssemblyName>
+    <RootNamespace>MouseSave</RootNamespace>
+    <ApplicationIcon>resources\app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Authors>MouseSave Team</Authors>
+    <Description>Smooth scrolling and mouse customization utility for Windows &amp; macOS</Description>
+  </PropertyGroup>
+
+</Project>

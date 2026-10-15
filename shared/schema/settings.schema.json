@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MouseSaveSettings",
+  "type": "object",
+  "properties": {
+    "isEnabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Master switch to enable or disable mouse event interception"
+    },
+    "showInMenuBar": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show MouseSave status icon in macOS menu bar / Windows system tray"
+    },
+    "launchAtLogin": {
+      "type": "boolean",
+      "default": false,
+      "description": "Automatically launch MouseSave on system boot/login"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["auto", "en", "zh-Hant"],
+      "default": "auto",
+      "description": "UI language preference"
+    },
+    "excludedApps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [
+        "cs2.exe",
+        "valorant.exe",
+        "League of Legends.exe",
+        "Overwatch.exe",
+        "Apex.exe",
+        "Blender.exe"
+      ],
+      "description": "List of executable or process names where MouseSave is completely paused"
+    },
+    "scrolling": {
+      "type": "object",
+      "properties": {
+        "smoothScrolling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable smooth inertial scrolling"
+        },
+        "friction": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 0.99,
+          "default": 0.90,
+          "description": "Friction factor for deceleration curve"
+        },
+        "acceleration": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 5.0,
+          "default": 1.2,
+          "description": "Scroll wheel velocity multiplier"
+        },
+        "invertDirection": {
+          "type": "boolean",
+          "default": false,
+          "description": "Invert vertical scroll direction (Natural Scrolling)"
+        }
+      },
+      "required": ["smoothScrolling", "friction", "acceleration", "invertDirection"]
+    },
+    "buttons": {
+      "type": "object",
+      "properties": {
+        "middleClickAction": {
+          "type": "string",
+          "enum": ["default", "taskView", "desktop", "closeWindow"],
+          "default": "default"
+        },
+        "button4Action": {
+          "type": "string",
+          "enum": ["back", "taskView", "switchAppLeft", "none"],
+          "default": "back"
+        },
+        "button5Action": {
+          "type": "string",
+          "enum": ["forward", "taskView", "switchAppRight", "none"],
+          "default": "forward"
+        }
+      },
+      "required": ["middleClickAction", "button4Action", "button5Action"]
+    }
+  },
+  "required": ["isEnabled", "showInMenuBar", "launchAtLogin", "excludedApps", "scrolling", "buttons"]
+}

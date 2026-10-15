@@ -1,0 +1,40 @@
+# Xcode & macOS
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+Network Trash Folder
+Temporary Items
+.Trashes
+
+# Windows & .NET
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+[Dd]ebug/
+[Rr]elease/
+
+# Editor & OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
