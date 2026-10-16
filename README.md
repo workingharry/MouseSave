@@ -116,10 +116,13 @@ dotnet run
 2. Select the `MouseSave` target.
 3. Press `Cmd + R` to build and launch.
 
-#### Building via Command Line:
+#### Building via Command Line & Creating DMG:
 ```bash
-xcodebuild -project MouseSave.xcodeproj -scheme MouseSave -configuration Release build
+# One-click build MouseSave.app and package into a compressed DMG:
+chmod +x scripts/build_dmg.sh
+./scripts/build_dmg.sh
 ```
+The output `.dmg` file will be generated in `dist/MouseSave-v1.1.0-macOS.dmg`.
 
 > **Note on macOS Permissions**:  
 > macOS requires **Accessibility permission** to intercept mouse events via Quartz Event Services. When prompted on first launch, click **Open System Settings** and grant access in **System Settings > Privacy & Security > Accessibility**.

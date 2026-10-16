@@ -34,4 +34,5 @@
 
 ### 📦 下載與安裝 (Download)
 
-- **`MouseSave-v1.1.0-windows-x64.zip`**：解壓縮後雙擊 `MouseSave.exe` 即可直接使用，綠色免安裝。
+- **`MouseSave-v1.1.0-windows-x64.zip`** (Windows)：解壓縮後雙擊 `MouseSave.exe` 即可直接使用，綠色免安裝。
+- **`MouseSave-v1.1.0-macOS.dmg`** (macOS)：雙擊開啟 DMG 磁碟映像檔，將 `MouseSave.app` 拖曳至 `Applications` 資料夾即可完成安裝。
