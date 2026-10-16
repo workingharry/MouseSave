@@ -337,49 +337,28 @@ namespace MouseSave {
         private void BuildButtonsPage(Panel p) {
             int y = 0;
             int cardGap = Theme.Scale(10);
-            int cardW = p.Width - Theme.Scale(16);
+            int cardW = p.ClientSize.Width - Theme.Scale(16);
 
-            // 1. Detection Bar & Hardware Help Card
-            Panel headerCard = new Panel {
-                Location = new Point(0, y),
-                Width = cardW,
-                Height = Theme.Scale(50),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                BackColor = Theme.CardBackground
-            };
-            headerCard.Paint += delegate(object s, PaintEventArgs e) {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using (GraphicsPath path = Theme.CreateRoundedRectangle(headerCard.ClientRectangle, Theme.Scale(8)))
-                using (Pen pen = new Pen(Theme.CardBorder, 1f)) {
-                    e.Graphics.DrawPath(pen, path);
-                }
-            };
-
-            Label lblHelp = new Label {
-                Text = Localization.Get("detectTip"),
-                Location = new Point(Theme.Scale(14), Theme.Scale(8)),
-                Size = new Size(cardW - Theme.Scale(190), Theme.Scale(34)),
-                Font = Theme.GetTextFont(8.8f, FontStyle.Regular),
-                ForeColor = Theme.TextSecondary,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            headerCard.Controls.Add(lblHelp);
-
+            // 1. Detection Bar (Standard FluentCard with responsive RightControl)
             _btnDetectButton = new FluentButton {
                 Text = Localization.Get("detectButton"),
-                Location = new Point(cardW - Theme.Scale(170), Theme.Scale(9)),
-                Size = new Size(Theme.Scale(158), Theme.Scale(32)),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Size = new Size(Theme.Scale(110), Theme.Scale(32)),
                 IsAccent = true
             };
             _btnDetectButton.Click += delegate {
                 StartButtonDetection();
             };
-            headerCard.Controls.Add(_btnDetectButton);
 
-            p.Controls.Add(headerCard);
-            y += headerCard.Height + cardGap;
+            FluentCard cardDetect = new FluentCard {
+                Location = new Point(0, y),
+                Width = cardW,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Title = Localization.Get("detectTitle"),
+                Description = Localization.Get("detectTip"),
+                RightControl = _btnDetectButton
+            };
+            p.Controls.Add(cardDetect);
+            y += cardDetect.Height + cardGap;
 
             // 2. Visualizer diagram
             _mouseVisualizer = new MouseVisualizer {
@@ -393,7 +372,7 @@ namespace MouseSave {
             p.Controls.Add(_mouseVisualizer);
             y += _mouseVisualizer.Height + cardGap;
 
-            // 3. Middle Click
+            // 3. Middle Click (Wheel Group)
             _cboMiddleClick = CreateActionComboBox();
             _cboMiddleClick.SelectedIndexChanged += delegate {
                 _mouseVisualizer.MiddleActionText = _cboMiddleClick.Text;
@@ -409,39 +388,7 @@ namespace MouseSave {
             p.Controls.Add(_cardMiddle);
             y += _cardMiddle.Height + cardGap;
 
-            // 4. Side Button 5
-            _cboButton5 = CreateActionComboBox();
-            _cboButton5.SelectedIndexChanged += delegate {
-                _mouseVisualizer.Button5ActionText = _cboButton5.Text;
-            };
-            _cardBtn5 = new FluentCard {
-                Location = new Point(0, y),
-                Width = cardW,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Title = Localization.Get("button5Action"),
-                Description = Localization.Get("descButton5"),
-                RightControl = _cboButton5
-            };
-            p.Controls.Add(_cardBtn5);
-            y += _cardBtn5.Height + cardGap;
-
-            // 5. Side Button 4
-            _cboButton4 = CreateActionComboBox();
-            _cboButton4.SelectedIndexChanged += delegate {
-                _mouseVisualizer.Button4ActionText = _cboButton4.Text;
-            };
-            _cardBtn4 = new FluentCard {
-                Location = new Point(0, y),
-                Width = cardW,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Title = Localization.Get("button4Action"),
-                Description = Localization.Get("descButton4"),
-                RightControl = _cboButton4
-            };
-            p.Controls.Add(_cardBtn4);
-            y += _cardBtn4.Height + cardGap;
-
-            // 6. Tilt Wheel Left
+            // 4. Tilt Wheel Left (Wheel Group)
             _cboTiltLeft = CreateActionComboBox();
             _cboTiltLeft.SelectedIndexChanged += delegate {
                 _mouseVisualizer.TiltLeftActionText = _cboTiltLeft.Text;
@@ -457,7 +404,7 @@ namespace MouseSave {
             p.Controls.Add(_cardTiltLeft);
             y += _cardTiltLeft.Height + cardGap;
 
-            // 7. Tilt Wheel Right
+            // 5. Tilt Wheel Right (Wheel Group)
             _cboTiltRight = CreateActionComboBox();
             _cboTiltRight.SelectedIndexChanged += delegate {
                 _mouseVisualizer.TiltRightActionText = _cboTiltRight.Text;
@@ -472,6 +419,38 @@ namespace MouseSave {
             };
             p.Controls.Add(_cardTiltRight);
             y += _cardTiltRight.Height + cardGap;
+
+            // 6. Side Button 5 (Thumb Group - Forward)
+            _cboButton5 = CreateActionComboBox();
+            _cboButton5.SelectedIndexChanged += delegate {
+                _mouseVisualizer.Button5ActionText = _cboButton5.Text;
+            };
+            _cardBtn5 = new FluentCard {
+                Location = new Point(0, y),
+                Width = cardW,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Title = Localization.Get("button5Action"),
+                Description = Localization.Get("descButton5"),
+                RightControl = _cboButton5
+            };
+            p.Controls.Add(_cardBtn5);
+            y += _cardBtn5.Height + cardGap;
+
+            // 7. Side Button 4 (Thumb Group - Back)
+            _cboButton4 = CreateActionComboBox();
+            _cboButton4.SelectedIndexChanged += delegate {
+                _mouseVisualizer.Button4ActionText = _cboButton4.Text;
+            };
+            _cardBtn4 = new FluentCard {
+                Location = new Point(0, y),
+                Width = cardW,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Title = Localization.Get("button4Action"),
+                Description = Localization.Get("descButton4"),
+                RightControl = _cboButton4
+            };
+            p.Controls.Add(_cardBtn4);
+            y += _cardBtn4.Height + cardGap;
         }
 
         private void StartButtonDetection() {
@@ -991,6 +970,7 @@ namespace MouseSave {
 
             _btnReset.Text = Localization.Get("reset");
             _btnSave.Text = Localization.Get("save");
+            if (_btnDetectButton != null) _btnDetectButton.Text = Localization.Get("detectButton");
 
             SwitchPage(_selectedPageIndex);
             PopulateActionCombos();

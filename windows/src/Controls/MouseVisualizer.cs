@@ -108,9 +108,17 @@ namespace MouseSave.Controls {
             int cx = Theme.Scale(100);
             int cy = Theme.Scale(85);
 
-            // Wheel area: cx-10 to cx+10, cy-50 to cy-15
-            Rectangle wheelRect = new Rectangle(cx - Theme.Scale(10), cy - Theme.Scale(50), Theme.Scale(20), Theme.Scale(36));
+            // Wheel area: cx-8 to cx+8, cy-48 to cy-16
+            Rectangle wheelRect = new Rectangle(cx - Theme.Scale(8), cy - Theme.Scale(48), Theme.Scale(16), Theme.Scale(32));
             if (wheelRect.Contains(pt)) return "middle";
+
+            // Tilt Left area (Left of wheel)
+            Rectangle tiltLeftRect = new Rectangle(cx - Theme.Scale(21), cy - Theme.Scale(43), Theme.Scale(11), Theme.Scale(22));
+            if (tiltLeftRect.Contains(pt)) return "tiltLeft";
+
+            // Tilt Right area (Right of wheel)
+            Rectangle tiltRightRect = new Rectangle(cx + Theme.Scale(10), cy - Theme.Scale(43), Theme.Scale(11), Theme.Scale(22));
+            if (tiltRightRect.Contains(pt)) return "tiltRight";
 
             // Side button 5 (Forward, upper thumb): cx-46 to cx-32, cy-25 to cy-2
             Rectangle btn5Rect = new Rectangle(cx - Theme.Scale(46), cy - Theme.Scale(25), Theme.Scale(18), Theme.Scale(22));
@@ -159,20 +167,52 @@ namespace MouseSave.Controls {
             Rectangle wheelRect = new Rectangle(cx - Theme.Scale(8), cy - Theme.Scale(48), Theme.Scale(16), Theme.Scale(32));
             DrawInteractiveButton(g, wheelRect, "middle", Theme.Scale(6));
 
-            // 2. Side Button 5 (Forward)
+            // 2. Tilt Left & Tilt Right buttons / arrows beside the wheel
+            Rectangle tiltLeftRect = new Rectangle(cx - Theme.Scale(21), cy - Theme.Scale(43), Theme.Scale(11), Theme.Scale(22));
+            DrawInteractiveButton(g, tiltLeftRect, "tiltLeft", Theme.Scale(3));
+            DrawTiltArrow(g, tiltLeftRect, true, _selectedButton == "tiltLeft" || _pulsingButton == "tiltLeft");
+
+            Rectangle tiltRightRect = new Rectangle(cx + Theme.Scale(10), cy - Theme.Scale(43), Theme.Scale(11), Theme.Scale(22));
+            DrawInteractiveButton(g, tiltRightRect, "tiltRight", Theme.Scale(3));
+            DrawTiltArrow(g, tiltRightRect, false, _selectedButton == "tiltRight" || _pulsingButton == "tiltRight");
+
+            // 3. Side Button 5 (Forward)
             Rectangle btn5Rect = new Rectangle(cx - mw / 2 - Theme.Scale(6), cy - Theme.Scale(25), Theme.Scale(10), Theme.Scale(20));
             DrawInteractiveButton(g, btn5Rect, "button5", Theme.Scale(4));
 
-            // 3. Side Button 4 (Back)
+            // 4. Side Button 4 (Back)
             Rectangle btn4Rect = new Rectangle(cx - mw / 2 - Theme.Scale(6), cy + Theme.Scale(2), Theme.Scale(10), Theme.Scale(20));
             DrawInteractiveButton(g, btn4Rect, "button4", Theme.Scale(4));
 
             // Leader lines and info cards on the right side
             int labelLeft = Theme.Scale(185);
 
-            DrawIndicatorCard(g, labelLeft, Theme.Scale(20), "middle", Localization.Get("middleClickAction"), _middleActionText, wheelRect.Right, wheelRect.Top + wheelRect.Height / 2);
-            DrawIndicatorCard(g, labelLeft, Theme.Scale(70), "button5", Localization.Get("button5Action"), _button5ActionText, btn5Rect.Left, btn5Rect.Top + btn5Rect.Height / 2);
-            DrawIndicatorCard(g, labelLeft, Theme.Scale(120), "button4", Localization.Get("button4Action"), _button4ActionText, btn4Rect.Left, btn4Rect.Top + btn4Rect.Height / 2);
+            DrawIndicatorCard(g, labelLeft, Theme.Scale(12), "middle", Localization.Get("middleClickAction"), _middleActionText, wheelRect.Right, wheelRect.Top + wheelRect.Height / 2);
+            DrawIndicatorCard(g, labelLeft, Theme.Scale(50), "tiltLeft", Localization.Get("tiltLeftAction"), _tiltLeftActionText, tiltLeftRect.Left, tiltLeftRect.Top + tiltLeftRect.Height / 2);
+            DrawIndicatorCard(g, labelLeft, Theme.Scale(88), "button5", Localization.Get("button5Action"), _button5ActionText, btn5Rect.Left, btn5Rect.Top + btn5Rect.Height / 2);
+            DrawIndicatorCard(g, labelLeft, Theme.Scale(126), "button4", Localization.Get("button4Action"), _button4ActionText, btn4Rect.Left, btn4Rect.Top + btn4Rect.Height / 2);
+        }
+
+        private void DrawTiltArrow(Graphics g, Rectangle r, bool isLeft, bool active) {
+            Color arrowColor = active ? Color.White : (Theme.IsDark ? Color.FromArgb(170, 170, 170) : Color.FromArgb(100, 100, 100));
+            int midY = r.Y + r.Height / 2;
+            Point[] pts;
+            if (isLeft) {
+                pts = new Point[] {
+                    new Point(r.X + Theme.Scale(2), midY),
+                    new Point(r.Right - Theme.Scale(2), midY - Theme.Scale(4)),
+                    new Point(r.Right - Theme.Scale(2), midY + Theme.Scale(4))
+                };
+            } else {
+                pts = new Point[] {
+                    new Point(r.Right - Theme.Scale(2), midY),
+                    new Point(r.X + Theme.Scale(2), midY - Theme.Scale(4)),
+                    new Point(r.X + Theme.Scale(2), midY + Theme.Scale(4))
+                };
+            }
+            using (SolidBrush b = new SolidBrush(arrowColor)) {
+                g.FillPolygon(b, pts);
+            }
         }
 
         private void DrawInteractiveButton(Graphics g, Rectangle rect, string btnId, int radius) {
