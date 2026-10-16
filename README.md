@@ -1,6 +1,9 @@
 # 🖱️ MouseSave (Cross-Platform: macOS & Windows)
 
-**MouseSave** is an ultra-lightweight, native menu-bar and system-tray utility for both **macOS** and **Windows**. It transforms ordinary mice into productivity powerhouses by adding smooth inertial scrolling, customizable side buttons (Buttons 4 & 5), independent scroll direction control, and **per-application exclusion / Game Mode**.
+[![Release](https://img.shields.io/badge/release-v1.1.0-blue.svg)](https://github.com/workingharry/MouseSave/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/workingharry/MouseSave)
+
+**MouseSave** is an ultra-lightweight, native menu-bar and system-tray utility for both **macOS** and **Windows**. It transforms ordinary mice into productivity powerhouses by adding smooth inertial scrolling, customizable side buttons (Buttons 4 & 5), 4-way tilt wheel navigation, independent scroll direction control, and **per-application exclusion / Game Mode**.
 
 ---
 
@@ -10,13 +13,15 @@
 | :--- | :--- | :--- |
 | **Smooth Inertial Scrolling** | Pixel-level decay interpolation via `CGEventTap` | High-frequency physical decay via `WH_MOUSE_LL` |
 | **App Exclusion / Game Mode** | 🎮 Automatically bypasses MouseSave in specified apps (CS2, LoL, Blender, CAD) | 🎮 Automatically bypasses MouseSave in specified apps (CS2, LoL, Blender, CAD) |
+| **Hardware Key Detection** | Real-time button listener | ➕ Real-time button learning dialog & live pulse visualizer |
+| **4-Way Tilt Wheel** | Horizontal wheel swipe support | Horizontal wheel swipe & tab navigation (`Ctrl+Tab` / `Ctrl+Shift+Tab`) |
 | **Side Buttons Remapping** | Buttons 4 & 5 mapped to Back/Forward, Mission Control, Show Desktop | Buttons 4 & 5 mapped to Back/Forward, Task View (`Win+Tab`), Desktop (`Win+D`), Close Window (`Ctrl+W`) |
 | **Middle Click Action** | Custom middle-click remapping | Custom middle-click remapping |
 | **Natural Scrolling** | Invert mouse scroll direction independently | Invert mouse scroll direction independently |
-| **System Tray / Menu Bar** | Native `NSStatusItem` in macOS Menu Bar | Native `NotifyIcon` in Windows Taskbar Notification Area |
+| **System Tray / Menu Bar** | Native `NSStatusItem` in macOS Menu Bar | Fluent Win11 Native `NotifyIcon` & Context Menu |
 | **Launch at Login** | `SMAppService` / Login Items | Windows Registry (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) |
 | **Localization** | English & 繁體中文 (Traditional Chinese) | English & 繁體中文 (Traditional Chinese) |
-| **Memory Footprint** | ~15MB RAM | ~15MB RAM (~40KB standalone binary) |
+| **Memory Footprint** | ~15MB RAM | ~15MB RAM (~85KB standalone binary) |
 
 ---
 

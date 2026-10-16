@@ -126,7 +126,7 @@ namespace MouseSave {
                 ForeColor = Theme.TextPrimary
             };
             Label lblVer = new Label {
-                Text = "v1.0.0 • Win11 Fluent",
+                Text = "v1.1.0 • Win11 Fluent",
                 Location = new Point(Theme.Scale(20), Theme.Scale(44)),
                 AutoSize = true,
                 Font = Theme.GetTextFont(8f, FontStyle.Regular),

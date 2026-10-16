@@ -1,9 +1,15 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 using MouseSave.Controls;
+
+[assembly: AssemblyTitle("MouseSave")]
+[assembly: AssemblyProduct("MouseSave")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 namespace MouseSave {
     public static class Program {
