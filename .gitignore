@@ -38,3 +38,5 @@ obj/
 .idea/
 Thumbs.db
 desktop.ini
+
+dist/
