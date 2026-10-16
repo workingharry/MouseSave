@@ -1,4 +1,4 @@
-# build.ps1 - Compile MouseSave for Windows
+# build.ps1 - Compile MouseSave for Windows (Fluent Win11 UI)
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -24,10 +24,21 @@ $sources = @(
     (Join-Path $srcDir "Settings.cs"),
     (Join-Path $srcDir "Localization.cs"),
     (Join-Path $srcDir "StartupHelper.cs"),
+    (Join-Path $srcDir "Theme.cs"),
+    (Join-Path $srcDir "Controls\ToggleSwitch.cs"),
+    (Join-Path $srcDir "Controls\FluentSlider.cs"),
+    (Join-Path $srcDir "Controls\FluentButton.cs"),
+    (Join-Path $srcDir "Controls\FluentCard.cs"),
+    (Join-Path $srcDir "Controls\MouseVisualizer.cs"),
+    (Join-Path $srcDir "Controls\ScrollPreviewBox.cs"),
+    (Join-Path $srcDir "Controls\ExclusionListView.cs"),
+    (Join-Path $srcDir "Controls\FluentMenuRenderer.cs"),
     (Join-Path $srcDir "MouseHook.cs"),
     (Join-Path $srcDir "SettingsForm.cs"),
     (Join-Path $srcDir "Program.cs")
 )
+
+$manifest = Join-Path $srcDir "app.manifest"
 
 $args = @(
     "/target:winexe",
@@ -36,6 +47,7 @@ $args = @(
     "/r:System.dll",
     "/r:System.Drawing.dll",
     "/r:System.Windows.Forms.dll",
+    "/win32manifest:$manifest",
     "/out:$outExe"
 ) + $sources
 

@@ -22,11 +22,15 @@ namespace MouseSave {
         public string MiddleClickAction { get; set; }
         public string Button4Action { get; set; }
         public string Button5Action { get; set; }
+        public string TiltLeftAction { get; set; }
+        public string TiltRightAction { get; set; }
 
         public ButtonSettings() {
             MiddleClickAction = "default";
             Button4Action = "back";
             Button5Action = "forward";
+            TiltLeftAction = "none";
+            TiltRightAction = "none";
         }
     }
 
@@ -105,7 +109,9 @@ namespace MouseSave {
                 sb.AppendLine("  \"buttons\": {");
                 sb.AppendLine(string.Format("    \"middleClickAction\": \"{0}\",", Buttons.MiddleClickAction));
                 sb.AppendLine(string.Format("    \"button4Action\": \"{0}\",", Buttons.Button4Action));
-                sb.AppendLine(string.Format("    \"button5Action\": \"{0}\"", Buttons.Button5Action));
+                sb.AppendLine(string.Format("    \"button5Action\": \"{0}\",", Buttons.Button5Action));
+                sb.AppendLine(string.Format("    \"tiltLeftAction\": \"{0}\",", Buttons.TiltLeftAction));
+                sb.AppendLine(string.Format("    \"tiltRightAction\": \"{0}\"", Buttons.TiltRightAction));
                 sb.AppendLine("  }");
                 sb.AppendLine("}");
 
@@ -140,6 +146,8 @@ namespace MouseSave {
                     settings.Buttons.MiddleClickAction = ExtractString(json, "middleClickAction", "default");
                     settings.Buttons.Button4Action = ExtractString(json, "button4Action", "back");
                     settings.Buttons.Button5Action = ExtractString(json, "button5Action", "forward");
+                    settings.Buttons.TiltLeftAction = ExtractString(json, "tiltLeftAction", "none");
+                    settings.Buttons.TiltRightAction = ExtractString(json, "tiltRightAction", "none");
                 }
             } catch (Exception ex) {
                 System.Diagnostics.Debug.WriteLine("[MouseSave] Load error: " + ex.Message);

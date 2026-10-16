@@ -28,6 +28,14 @@ namespace MouseSave {
         private const byte VK_D = 0x44;
         private const byte VK_W = 0x57;
         private const byte VK_CONTROL = 0x11;
+        private const byte VK_SHIFT = 0x10;
+        private const byte VK_MENU = 0x12; // Alt
+        private const byte VK_LEFT = 0x25;
+        private const byte VK_RIGHT = 0x27;
+
+        public static Action<string> OnButtonCaptured;
+        public static volatile bool IsCapturingButton = false;
+        public static event Action<string> ButtonPressed;
 
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
@@ -163,15 +171,55 @@ namespace MouseSave {
                         return (IntPtr)1; // Suppress raw event
                     }
                 }
-                // 4. Middle Button Interception
+                // 4. Horizontal / Tilt Wheel Interception
+                else if (msg == WM_MOUSEHWHEEL) {
+                    short hDelta = (short)((hookStruct.mouseData >> 16) & 0xffff);
+                    string tiltKey = (hDelta < 0) ? "tiltLeft" : "tiltRight";
+                    if (ButtonPressed != null) ButtonPressed(tiltKey);
+
+                    if (IsCapturingButton && OnButtonCaptured != null) {
+                        Action<string> cb = OnButtonCaptured;
+                        IsCapturingButton = false;
+                        OnButtonCaptured = null;
+                        cb(tiltKey);
+                        return (IntPtr)1;
+                    }
+
+                    string tiltAction = (hDelta < 0) ? settings.Buttons.TiltLeftAction : settings.Buttons.TiltRightAction;
+                    if (HandleButtonAction(tiltAction)) {
+                        return (IntPtr)1;
+                    }
+                }
+                // 5. Middle Button Interception
                 else if (msg == WM_MBUTTONDOWN) {
+                    if (ButtonPressed != null) ButtonPressed("middle");
+
+                    if (IsCapturingButton && OnButtonCaptured != null) {
+                        Action<string> cb = OnButtonCaptured;
+                        IsCapturingButton = false;
+                        OnButtonCaptured = null;
+                        cb("middle");
+                        return (IntPtr)1;
+                    }
+
                     if (HandleButtonAction(settings.Buttons.MiddleClickAction)) {
                         return (IntPtr)1;
                     }
                 }
-                // 5. Side Buttons (XButton 1 & 2) Interception
+                // 6. Side Buttons (XButton 1 & 2) Interception
                 else if (msg == WM_XBUTTONDOWN) {
                     int xButton = (int)((hookStruct.mouseData >> 16) & 0xffff);
+                    string btnKey = (xButton == XBUTTON1) ? "button4" : "button5";
+                    if (ButtonPressed != null) ButtonPressed(btnKey);
+
+                    if (IsCapturingButton && OnButtonCaptured != null) {
+                        Action<string> cb = OnButtonCaptured;
+                        IsCapturingButton = false;
+                        OnButtonCaptured = null;
+                        cb(btnKey);
+                        return (IntPtr)1;
+                    }
+
                     string action = (xButton == XBUTTON1) 
                         ? settings.Buttons.Button4Action 
                         : settings.Buttons.Button5Action;
@@ -349,6 +397,52 @@ namespace MouseSave {
                     keybd_event(VK_W, 0, 0, UIntPtr.Zero);
                     keybd_event(VK_W, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
                     keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                });
+                return true;
+            }
+
+            if (action == "switchTabLeft") {
+                // Trigger Ctrl + Shift + Tab
+                ThreadPool.QueueUserWorkItem(delegate {
+                    keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_SHIFT, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_TAB, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                });
+                return true;
+            }
+
+            if (action == "switchTabRight") {
+                // Trigger Ctrl + Tab
+                ThreadPool.QueueUserWorkItem(delegate {
+                    keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_TAB, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                });
+                return true;
+            }
+
+            if (action == "back") {
+                // Trigger Alt + Left
+                ThreadPool.QueueUserWorkItem(delegate {
+                    keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_LEFT, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_LEFT, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                });
+                return true;
+            }
+
+            if (action == "forward") {
+                // Trigger Alt + Right
+                ThreadPool.QueueUserWorkItem(delegate {
+                    keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_RIGHT, 0, 0, UIntPtr.Zero);
+                    keybd_event(VK_RIGHT, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
                 });
                 return true;
             }
