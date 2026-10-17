@@ -23,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MouseHookHelper.shared.start()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if AppSettings.shared.isEnabled {
+            MouseHookHelper.shared.start()
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         MouseHookHelper.shared.stop()
     }

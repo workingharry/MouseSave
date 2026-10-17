@@ -26,6 +26,7 @@ final class MouseHookHelper {
     private init() {}
 
     func start() {
+        guard AppSettings.shared.isEnabled else { return }
         guard !isRunning else { return }
 
         // Start active application tracking
@@ -53,6 +54,12 @@ final class MouseHookHelper {
             userInfo: observer
         ) else {
             print("[MouseSave] Failed to create CGEventTap. Ensure Accessibility permissions are granted.")
+            // Retry automatically when permissions are granted
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                if self?.isRunning == false && AppSettings.shared.isEnabled {
+                    self?.start()
+                }
+            }
             return
         }
 
@@ -153,7 +160,8 @@ final class MouseHookHelper {
                 }
 
                 if settings.smoothScrolling {
-                    let impulse = direction * abs(Double(deltaY)) * settings.scrollAcceleration
+                    let basePixels: Double = 36.0
+                    let impulse = direction * abs(Double(deltaY)) * basePixels * settings.scrollAcceleration
                     physicsQueue.async {
                         self.scrollVelocity += impulse
                     }
@@ -192,6 +200,18 @@ final class MouseHookHelper {
         guard action != "default" && !action.isEmpty else { return false }
 
         if action == "none" { return true }
+
+        if action == "back" {
+            // Trigger Command + [ (macOS standard back in Safari, Chrome, Finder)
+            postSyntheticKeyEvent(keyCode: 33, flags: .maskCommand)
+            return true
+        }
+
+        if action == "forward" {
+            // Trigger Command + ] (macOS standard forward in Safari, Chrome, Finder)
+            postSyntheticKeyEvent(keyCode: 30, flags: .maskCommand)
+            return true
+        }
 
         if action == "taskView" {
             // Trigger macOS Mission Control
@@ -246,17 +266,17 @@ final class MouseHookHelper {
         physicsQueue.async { [weak self] in
             guard let self = self else { return }
 
-            if abs(self.scrollVelocity) < 0.5 {
+            if abs(self.scrollVelocity) < 1.0 {
                 self.scrollVelocity = 0.0
                 return
             }
 
-            let step = Int64(round(self.scrollVelocity * 0.25))
+            let step = Int32(round(self.scrollVelocity * 0.25))
             self.scrollVelocity *= AppSettings.shared.scrollFriction
 
             if step != 0 {
                 DispatchQueue.main.async {
-                    if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(step), wheel2: 0, wheel3: 0) {
+                    if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: step, wheel2: 0, wheel3: 0) {
                         scrollEvent.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
                         scrollEvent.post(tap: .cghidEventTap)
                     }

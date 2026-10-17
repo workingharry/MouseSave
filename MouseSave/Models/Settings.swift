@@ -9,7 +9,14 @@ final class AppSettings: ObservableObject {
     // MARK: - Published properties (auto-persisted)
 
     @Published var isEnabled: Bool {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: Keys.isEnabled) }
+        didSet {
+            UserDefaults.standard.set(isEnabled, forKey: Keys.isEnabled)
+            if isEnabled {
+                MouseHookHelper.shared.start()
+            } else {
+                MouseHookHelper.shared.stop()
+            }
+        }
     }
 
     @Published var showInMenuBar: Bool {
@@ -80,6 +87,9 @@ final class AppSettings: ObservableObject {
         let defaults = UserDefaults.standard
 
         // First launch defaults
+        if defaults.object(forKey: Keys.isEnabled) == nil {
+            defaults.set(true, forKey: Keys.isEnabled)
+        }
         if defaults.object(forKey: Keys.showInMenuBar) == nil {
             defaults.set(true, forKey: Keys.showInMenuBar)
         }
