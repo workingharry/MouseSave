@@ -46,6 +46,13 @@ final class MouseHookHelper {
         let observer = Unmanaged.passUnretained(self).toOpaque()
 
         guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: eventTapCallback,
+            userInfo: observer
+        ) ?? CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
@@ -153,43 +160,57 @@ final class MouseHookHelper {
         // 1. Scroll Wheel Handling
         if type == .scrollWheel {
             let deltaY = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
-            if deltaY != 0 {
-                var direction = deltaY > 0 ? 1.0 : -1.0
-                if settings.invertScrollDirection {
-                    direction = -direction
-                }
+            let pointDeltaY = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+            let fixedPtDeltaY = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
+
+            let rawDelta = deltaY != 0 ? Double(deltaY) : (fixedPtDeltaY != 0 ? fixedPtDeltaY : Double(pointDeltaY))
+            if rawDelta != 0 {
+                let direction = rawDelta > 0 ? 1.0 : -1.0
+                let effectiveDirection = settings.invertScrollDirection ? -direction : direction
 
                 if settings.smoothScrolling {
                     let basePixels: Double = 36.0
-                    let impulse = direction * abs(Double(deltaY)) * basePixels * settings.scrollAcceleration
+                    let impulse = effectiveDirection * abs(rawDelta) * basePixels * settings.scrollAcceleration
                     physicsQueue.async {
                         self.scrollVelocity += impulse
                     }
                     return nil // Suppress raw tick, let physics loop synthesize smooth ticks
                 } else if settings.invertScrollDirection {
-                    // Just invert without smoothing
-                    event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: -deltaY)
+                    // Invert all scroll delta fields for modern and legacy macOS apps
+                    if deltaY != 0 {
+                        event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: -deltaY)
+                    }
+                    if pointDeltaY != 0 {
+                        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: -pointDeltaY)
+                    }
+                    if fixedPtDeltaY != 0 {
+                        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: -fixedPtDeltaY)
+                    }
                     return Unmanaged.passUnretained(event)
                 }
             }
         }
 
         // 2. Extra Button Handling (Middle = 2, Button 4 = 3, Button 5 = 4)
-        if type == .otherMouseDown {
+        if type == .otherMouseDown || type == .otherMouseUp {
             let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
 
-            if buttonNumber == 2 { // Middle click
-                if handleButtonAction(settings.middleClickAction) {
-                    return nil
+            let action: String
+            if buttonNumber == 2 {
+                action = settings.middleClickAction
+            } else if buttonNumber == 3 {
+                action = settings.button4Action
+            } else if buttonNumber == 4 {
+                action = settings.button5Action
+            } else {
+                action = "default"
+            }
+
+            if action != "default" && !action.isEmpty {
+                if type == .otherMouseDown {
+                    _ = handleButtonAction(action)
                 }
-            } else if buttonNumber == 3 { // Button 4
-                if handleButtonAction(settings.button4Action) {
-                    return nil
-                }
-            } else if buttonNumber == 4 { // Button 5
-                if handleButtonAction(settings.button5Action) {
-                    return nil
-                }
+                return nil // Suppress raw button event so system doesn't register stray clicks
             }
         }
 
@@ -237,12 +258,17 @@ final class MouseHookHelper {
     }
 
     private func postSyntheticKeyEvent(keyCode: CGKeyCode, flags: CGEventFlags) {
-        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+           let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) {
             keyDown.flags = flags
             keyUp.flags = flags
-            keyDown.post(tap: .cghidEventTap)
-            keyUp.post(tap: .cghidEventTap)
+            keyDown.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+            keyUp.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+            keyDown.post(tap: .cgSessionEventTap)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                keyUp.post(tap: .cgSessionEventTap)
+            }
         }
     }
 
@@ -278,7 +304,7 @@ final class MouseHookHelper {
                 DispatchQueue.main.async {
                     if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: step, wheel2: 0, wheel3: 0) {
                         scrollEvent.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
-                        scrollEvent.post(tap: .cghidEventTap)
+                        scrollEvent.post(tap: .cgSessionEventTap)
                     }
                 }
             }

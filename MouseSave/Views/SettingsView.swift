@@ -34,6 +34,8 @@ struct SettingsView: View {
 
 struct GeneralTab: View {
     @ObservedObject var settings: AppSettings
+    @State private var isAccessibilityGranted: Bool = AXIsProcessTrusted()
+    @State private var timer: Timer?
 
     var body: some View {
         Form {
@@ -42,8 +44,62 @@ struct GeneralTab: View {
                 Toggle(String(localized: "Show in menu bar"), isOn: $settings.showInMenuBar)
                 Toggle(String(localized: "Launch at login"), isOn: $settings.launchAtLogin)
             }
+
+            Section(header: Text(String(localized: "Permission Status"))) {
+                if isAccessibilityGranted {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(String(localized: "Accessibility Permission Granted"))
+                            .foregroundColor(.primary)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(String(localized: "Accessibility Permission Required"))
+                                .foregroundColor(.red)
+                                .bold()
+                        }
+                        Text(String(localized: "MouseSave requires Accessibility permission to intercept and modify mouse events."))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(String(localized: "Tip: If already in the list, click '-' to remove it and re-add it so macOS recognizes the updated app."))
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+
+                        Button(String(localized: "Open System Settings")) {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+            }
         }
         .padding()
+        .onAppear {
+            checkPermission()
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                checkPermission()
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    private func checkPermission() {
+        let trusted = AXIsProcessTrusted()
+        if isAccessibilityGranted != trusted {
+            isAccessibilityGranted = trusted
+            if trusted && settings.isEnabled {
+                MouseHookHelper.shared.start()
+            }
+        }
     }
 }
 

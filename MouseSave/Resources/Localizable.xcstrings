@@ -1,4 +1,4 @@
-﻿{
+{
   "sourceLanguage" : "en",
   "strings" : {
     "Settings…" : {
@@ -327,6 +327,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "稍後"
+          }
+        }
+      }
+    },
+    "Permission Status" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "權限狀態"
+          }
+        }
+      }
+    },
+    "Accessibility Permission Granted" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取得輔助使用權限"
+          }
+        }
+      }
+    },
+    "MouseSave requires Accessibility permission to intercept and modify mouse events." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MouseSave 需要「輔助使用」權限才能攔截與修改滑鼠事件。"
+          }
+        }
+      }
+    },
+    "Tip: If already in the list, click '-' to remove it and re-add it so macOS recognizes the updated app." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示：若列表中已存在 MouseSave，請點擊「-」移除後重新加入，以便 macOS 識別更新後的應用程式。"
           }
         }
       }
