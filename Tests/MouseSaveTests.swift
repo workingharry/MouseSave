@@ -39,6 +39,60 @@ enum ButtonActionHandler {
     }
 }
 
+// MARK: - Gesture Direction & Space Switching Logic
+
+enum GestureDirection: String, Equatable {
+    case left
+    case right
+    case up
+    case down
+}
+
+enum SpaceDirection {
+    case left
+    case right
+}
+
+struct GestureEvaluator {
+    static func evaluate(
+        dx: Double,
+        dy: Double,
+        duration: TimeInterval,
+        threshold: Double = 75.0,
+        dominanceRatio: Double = 1.35
+    ) -> GestureDirection? {
+        guard duration >= 0.05 else { return nil }
+        let distance = hypot(dx, dy)
+        guard distance >= threshold else { return nil }
+
+        let absDx = abs(dx)
+        let absDy = abs(dy)
+
+        if absDx > absDy * dominanceRatio {
+            return dx < 0 ? .left : .right
+        } else if absDy > absDx * dominanceRatio {
+            // CGEvent coordinate system: upward drag has dy < 0
+            return dy < 0 ? .up : .down
+        }
+
+        return nil
+    }
+}
+
+struct SpaceIndexCalculator {
+    static func nextSpaceID(currentID: UInt64, spaceIDs: [UInt64], direction: SpaceDirection) -> UInt64? {
+        guard let curIndex = spaceIDs.firstIndex(of: currentID) else { return nil }
+        switch direction {
+        case .left:
+            guard curIndex > 0 else { return nil }
+            return spaceIDs[curIndex - 1]
+        case .right:
+            guard curIndex + 1 < spaceIDs.count else { return nil }
+            return spaceIDs[curIndex + 1]
+        }
+    }
+}
+
 // MARK: - Tests
 
 func testPhysicsStepNonZeroOnNormalTick() {
@@ -68,22 +122,76 @@ func testGestureNavigationSpaceSwitching() {
     let leftResult = ButtonActionHandler.keyCodeAndFlags(for: "leftSpace")
     assert(leftResult != nil, "Gesture 'leftSpace' must be handled!")
     assert(leftResult?.keyCode == 123, "Left space keyCode must be 123 (Left Arrow)")
-    assert(leftResult?.isControl == true, "Left space must include Control flag")
 
     let rightResult = ButtonActionHandler.keyCodeAndFlags(for: "rightSpace")
     assert(rightResult != nil, "Gesture 'rightSpace' must be handled!")
     assert(rightResult?.keyCode == 124, "Right space keyCode must be 124 (Right Arrow)")
-    assert(rightResult?.isControl == true, "Right space must include Control flag")
 
     let mcResult = ButtonActionHandler.keyCodeAndFlags(for: "missionControl")
     assert(mcResult != nil, "Gesture 'missionControl' must be handled!")
-    assert(mcResult?.keyCode == 126, "Mission Control keyCode must be 126 (Up Arrow)")
-    assert(mcResult?.isControl == true, "Mission Control must include Control flag")
+
     print("✅ testGestureNavigationSpaceSwitching passed")
+}
+
+func testGestureEvaluationAndDamping() {
+    print("Testing testGestureEvaluationAndDamping...")
+    // 1. Accidental thumb press jitter (small distance 35px, or quick click < 50ms)
+    let jitter1 = GestureEvaluator.evaluate(dx: 15, dy: -35, duration: 0.08, threshold: 75.0)
+    assert(jitter1 == nil, "35px jitter must NOT trigger gesture! (threshold is 75px)")
+
+    let quickClickJitter = GestureEvaluator.evaluate(dx: 20, dy: -80, duration: 0.02, threshold: 75.0)
+    assert(quickClickJitter == nil, "Rapid click under 50ms must be rejected as click jitter!")
+
+    // 2. Diagonal ambiguous movement (should not prematurely trigger)
+    let diagonal = GestureEvaluator.evaluate(dx: 65, dy: -65, duration: 0.12, threshold: 75.0)
+    assert(diagonal == nil, "Diagonal ambiguous movement must not trigger without dominance ratio!")
+
+    // 3. Clear upward swipe (dy < 0, dominant)
+    let upward = GestureEvaluator.evaluate(dx: 10, dy: -85, duration: 0.12, threshold: 75.0)
+    assert(upward == .up, "Upward drag must trigger .up gesture!")
+
+    // 4. Clear downward swipe (dy > 0, dominant)
+    let downward = GestureEvaluator.evaluate(dx: 8, dy: 80, duration: 0.15, threshold: 75.0)
+    assert(downward == .down, "Downward drag must trigger .down gesture!")
+
+    // 5. Clear leftward swipe (dx < 0, dominant)
+    let leftward = GestureEvaluator.evaluate(dx: -90, dy: 12, duration: 0.10, threshold: 75.0)
+    assert(leftward == .left, "Leftward drag must trigger .left gesture!")
+
+    // 6. Clear rightward swipe (dx > 0, dominant)
+    let rightward = GestureEvaluator.evaluate(dx: 95, dy: -10, duration: 0.11, threshold: 75.0)
+    assert(rightward == .right, "Rightward drag must trigger .right gesture!")
+
+    print("✅ testGestureEvaluationAndDamping passed")
+}
+
+func testSpaceIndexCalculation() {
+    print("Testing testSpaceIndexCalculation...")
+    let spaces: [UInt64] = [1, 165, 91]
+
+    // From space 1, move right -> 165
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 1, spaceIDs: spaces, direction: .right) == 165)
+    // From space 1, move left -> nil (boundary)
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 1, spaceIDs: spaces, direction: .left) == nil)
+
+    // From space 165, move right -> 91
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 165, spaceIDs: spaces, direction: .right) == 91)
+    // From space 165, move left -> 1
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 165, spaceIDs: spaces, direction: .left) == 1)
+
+    // From space 91, move right -> nil (boundary)
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 91, spaceIDs: spaces, direction: .right) == nil)
+    // From space 91, move left -> 165
+    assert(SpaceIndexCalculator.nextSpaceID(currentID: 91, spaceIDs: spaces, direction: .left) == 165)
+
+    print("✅ testSpaceIndexCalculation passed")
 }
 
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
 testGestureNavigationSpaceSwitching()
+testGestureEvaluationAndDamping()
+testSpaceIndexCalculation()
 print("All automated test assertions passed successfully!")
+

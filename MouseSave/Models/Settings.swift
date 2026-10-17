@@ -160,7 +160,7 @@ final class AppSettings: ObservableObject {
             defaults.set("button4", forKey: Keys.gestureTriggerButton)
         }
         if defaults.object(forKey: Keys.gestureThreshold) == nil {
-            defaults.set(35.0, forKey: Keys.gestureThreshold)
+            defaults.set(75.0, forKey: Keys.gestureThreshold)
         }
         if defaults.object(forKey: Keys.gestureSwipeLeftAction) == nil {
             defaults.set("leftSpace", forKey: Keys.gestureSwipeLeftAction)
@@ -201,7 +201,8 @@ final class AppSettings: ObservableObject {
         self.button5Action           = defaults.string(forKey: Keys.button5Action) ?? "forward"
         self.gestureEnabled          = defaults.bool(forKey: Keys.gestureEnabled)
         self.gestureTriggerButton    = defaults.string(forKey: Keys.gestureTriggerButton) ?? "button4"
-        self.gestureThreshold        = defaults.double(forKey: Keys.gestureThreshold) > 0 ? defaults.double(forKey: Keys.gestureThreshold) : 35.0
+        let savedThreshold           = defaults.double(forKey: Keys.gestureThreshold)
+        self.gestureThreshold        = savedThreshold >= 40.0 ? savedThreshold : 75.0
         self.gestureSwipeLeftAction  = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "leftSpace"
         self.gestureSwipeRightAction = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "rightSpace"
         self.gestureSwipeUpAction    = defaults.string(forKey: Keys.gestureSwipeUpAction) ?? "missionControl"

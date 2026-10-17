@@ -278,7 +278,10 @@ struct GesturesAndButtonsTab: View {
                             Text(String(format: "%.0f px", settings.gestureThreshold))
                                 .foregroundStyle(.secondary)
                         }
-                        Slider(value: $settings.gestureThreshold, in: 20...60, step: 5)
+                        Slider(value: $settings.gestureThreshold, in: 40...150, step: 5)
+                        Text("數值越大需滑動越遠才觸發，有效避免按壓側鍵時手部微晃誤觸（預設 75 px）。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
                     }
 
                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
@@ -286,14 +289,14 @@ struct GesturesAndButtonsTab: View {
                             Text("← 向左滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至左桌面 (Control + ←)")
+                            Text("切換至左桌面 (原生 Spaces)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {
                             Text("→ 向右滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至右桌面 (Control + →)")
+                            Text("切換至右桌面 (原生 Spaces)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {

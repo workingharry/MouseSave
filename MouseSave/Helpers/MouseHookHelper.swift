@@ -7,6 +7,24 @@ extension Notification.Name {
     static let mouseSaveButtonEvent  = Notification.Name("com.mousesave.buttonEvent")
 }
 
+// MARK: - CoreGraphics Services (CGS) Private API Bindings for WindowServer Spaces
+typealias CGSConnectionID = UInt32
+typealias CGSSpaceID = UInt64
+
+@_silgen_name("CGSMainConnectionID")
+private func CGSMainConnectionID() -> CGSConnectionID
+
+@_silgen_name("CGSCopyManagedDisplaySpaces")
+private func CGSCopyManagedDisplaySpaces(_ cid: CGSConnectionID) -> CFArray?
+
+@_silgen_name("CGSManagedDisplaySetCurrentSpace")
+private func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID, _ displayID: CFString, _ spaceID: CGSSpaceID)
+
+enum SpaceDirection {
+    case left
+    case right
+}
+
 /// Low-level macOS mouse interceptor using Quartz Event Services (CGEventTap).
 final class MouseHookHelper {
     static let shared = MouseHookHelper()
@@ -24,6 +42,7 @@ final class MouseHookHelper {
     private var isGestureTracking = false
     private var gestureFired = false
     private var gestureStartPoint: CGPoint = .zero
+    private var gestureStartTime: Date = Date()
     private var gestureTrackingButton: Int = -1
 
     // Workspace observer for active/foreground application
@@ -247,6 +266,7 @@ final class MouseHookHelper {
                 isGestureTracking = true
                 gestureFired = false
                 gestureStartPoint = event.location
+                gestureStartTime = Date()
                 gestureTrackingButton = buttonNumber
                 return nil // Suppress initial down event to discriminate click vs gesture
             } else {
@@ -261,34 +281,47 @@ final class MouseHookHelper {
         if type == .otherMouseDragged {
             let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
             if isGestureTracking && buttonNumber == gestureTrackingButton {
+                guard !gestureFired else {
+                    return nil // Already triggered for this drag sequence
+                }
+
+                let duration = Date().timeIntervalSince(gestureStartTime)
+                // Filter out thumb-press micro-jitter (must hold for at least 50ms)
+                guard duration >= 0.05 else {
+                    return nil
+                }
+
                 let dx = event.location.x - gestureStartPoint.x
                 let dy = event.location.y - gestureStartPoint.y
+                let distance = hypot(dx, dy)
                 let threshold = settings.gestureThreshold
 
-                if !gestureFired && (abs(dx) >= threshold || abs(dy) >= threshold) {
-                    gestureFired = true
-                    if abs(dx) > abs(dy) {
-                        if dx < 0 {
-                            executeGestureAction(settings.gestureSwipeLeftAction)
-                        } else {
-                            executeGestureAction(settings.gestureSwipeRightAction)
-                        }
-                    } else {
-                        // CGEvent coordinate system has (0,0) at upper-left; moving UP has dy < 0
-                        if dy < 0 {
-                            executeGestureAction(settings.gestureSwipeUpAction)
-                        } else {
-                            executeGestureAction(settings.gestureSwipeDownAction)
-                        }
-                    }
+                guard distance >= threshold else {
+                    return nil
+                }
 
-                    DispatchQueue.main.async {
-                        NotificationCenter.default.post(
-                            name: .mouseSaveGestureFired,
-                            object: nil,
-                            userInfo: ["dx": dx, "dy": dy]
-                        )
+                let absDx = abs(dx)
+                let absDy = abs(dy)
+                let dominanceRatio: Double = 1.35
+
+                // Evaluate direction: dominant axis check, or fallback if dragged significantly far
+                if absDx > absDy * dominanceRatio || (distance >= threshold * 1.8 && absDx > absDy) {
+                    gestureFired = true
+                    if dx < 0 {
+                        executeGestureAction(settings.gestureSwipeLeftAction, cursorLocation: event.location)
+                    } else {
+                        executeGestureAction(settings.gestureSwipeRightAction, cursorLocation: event.location)
                     }
+                    postGestureFired(dx: dx, dy: dy)
+                } else if absDy > absDx * dominanceRatio || (distance >= threshold * 1.8 && absDy > absDx) {
+                    // In Quartz coordinate system, upward drag has dy < 0
+                    gestureFired = true
+                    if dy < 0 {
+                        executeGestureAction(settings.gestureSwipeUpAction, cursorLocation: event.location)
+                    } else {
+                        executeGestureAction(settings.gestureSwipeDownAction, cursorLocation: event.location)
+                    }
+                    postGestureFired(dx: dx, dy: dy)
                 }
                 return nil // Suppress dragging events during gesture window
             }
@@ -321,29 +354,98 @@ final class MouseHookHelper {
         return Unmanaged.passUnretained(event)
     }
 
-    private func executeGestureAction(_ action: String) {
+    private func postGestureFired(dx: Double, dy: Double) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .mouseSaveGestureFired,
+                object: nil,
+                userInfo: ["dx": dx, "dy": dy]
+            )
+        }
+    }
+
+    private func executeGestureAction(_ action: String, cursorLocation: CGPoint? = nil) {
         switch action {
         case "leftSpace":
-            // Control + Left Arrow (macOS switch to left space)
-            postHardwareShortcut(modifierKey: 59, targetKey: 123, modifierFlag: .maskControl)
+            switchSpace(direction: .left, at: cursorLocation)
         case "rightSpace":
-            // Control + Right Arrow (macOS switch to right space)
-            postHardwareShortcut(modifierKey: 59, targetKey: 124, modifierFlag: .maskControl)
+            switchSpace(direction: .right, at: cursorLocation)
         case "missionControl":
-            // Open Mission Control directly via System URL for 100% reliable system response
-            DispatchQueue.main.async {
-                let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
-                let config = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
-            }
+            triggerMissionControl()
         case "appExpose":
-            // Control + Down Arrow (Application Windows)
-            postHardwareShortcut(modifierKey: 59, targetKey: 125, modifierFlag: .maskControl)
+            triggerMissionControl(argument: "2")
         case "desktop":
-            // Command + F3 / Desktop
-            postHardwareShortcut(modifierKey: 55, targetKey: 99, modifierFlag: .maskCommand)
+            triggerMissionControl(argument: "1")
         default:
             break
+        }
+    }
+
+    private func triggerMissionControl(argument: String? = nil) {
+        DispatchQueue.main.async {
+            let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
+            let config = NSWorkspace.OpenConfiguration()
+            if let arg = argument {
+                config.arguments = [arg]
+            }
+            NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        }
+    }
+
+    private func switchSpace(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
+        let cid = CGSMainConnectionID()
+        guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty else {
+            // Fallback to hardware shortcut if CGS returns nil
+            let targetKey: CGKeyCode = (direction == .left) ? 123 : 124
+            postHardwareShortcut(modifierKey: 59, targetKey: targetKey, modifierFlag: .maskControl)
+            return
+        }
+
+        var targetDisplay: [String: Any]? = displays.first
+        if cursorLocation != nil {
+            let mouseLoc = NSEvent.mouseLocation
+            if let activeScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) }),
+               let screenNum = activeScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+               let uuidCF = CGDisplayCreateUUIDFromDisplayID(screenNum)?.takeRetainedValue() {
+                let uuidStr = CFUUIDCreateString(nil, uuidCF) as String
+                if let match = displays.first(where: { ($0["Display Identifier"] as? String) == uuidStr }) {
+                    targetDisplay = match
+                }
+            }
+        }
+
+        guard let display = targetDisplay,
+              let displayID = display["Display Identifier"] as? String,
+              let currentSpace = display["Current Space"] as? [String: Any],
+              let curID = currentSpace["id64"] as? CGSSpaceID,
+              let spaces = display["Spaces"] as? [[String: Any]] else {
+            return
+        }
+
+        let spaceIDs = spaces.compactMap { $0["id64"] as? CGSSpaceID }
+        guard let curIndex = spaceIDs.firstIndex(of: curID) else { return }
+
+        let nextIndex: Int
+        switch direction {
+        case .left:
+            nextIndex = curIndex - 1
+        case .right:
+            nextIndex = curIndex + 1
+        }
+
+        guard nextIndex >= 0 && nextIndex < spaceIDs.count else {
+            // Reached boundary: gentle feedback
+            DispatchQueue.main.async {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+            return
+        }
+
+        let targetSpaceID = spaceIDs[nextIndex]
+        CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
+        DispatchQueue.main.async {
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         }
     }
 
