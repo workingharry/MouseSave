@@ -496,8 +496,10 @@ final class MouseHookHelper {
     private struct TargetSpaceContext {
         let displayID: String
         let currentSpaceID: CGSSpaceID
+        let currentSpaceType: Int
         let hasTargetSpace: Bool
         let targetSpaceID: CGSSpaceID?
+        let targetSpaceType: Int?
     }
 
     private func getSpaceContext(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) -> TargetSpaceContext? {
@@ -523,21 +525,25 @@ final class MouseHookHelper {
               let displayID = display["Display Identifier"] as? String,
               let currentSpace = display["Current Space"] as? [String: Any],
               let curID = currentSpace["id64"] as? CGSSpaceID,
+              let curType = currentSpace["type"] as? Int,
               let spaces = display["Spaces"] as? [[String: Any]] else {
             return nil
         }
 
         let spaceIDs = spaces.compactMap { $0["id64"] as? CGSSpaceID }
         guard let curIndex = spaceIDs.firstIndex(of: curID) else {
-            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: false, targetSpaceID: nil)
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, currentSpaceType: curType, hasTargetSpace: false, targetSpaceID: nil, targetSpaceType: nil)
         }
 
         let nextIndex = (direction == .left) ? curIndex - 1 : curIndex + 1
-        if nextIndex >= 0 && nextIndex < spaceIDs.count {
-            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: true, targetSpaceID: spaceIDs[nextIndex])
+        if nextIndex >= 0 && nextIndex < spaces.count {
+            let targetDict = spaces[nextIndex]
+            let targetID = targetDict["id64"] as? CGSSpaceID
+            let targetType = targetDict["type"] as? Int
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, currentSpaceType: curType, hasTargetSpace: true, targetSpaceID: targetID, targetSpaceType: targetType)
         } else {
             // At boundary (e.g. leftmost or rightmost space)
-            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: false, targetSpaceID: nil)
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, currentSpaceType: curType, hasTargetSpace: false, targetSpaceID: nil, targetSpaceType: nil)
         }
     }
 
@@ -591,18 +597,33 @@ final class MouseHookHelper {
         }
 
         let initialSpaceID = context.currentSpaceID
+        let initialSpaceType = context.currentSpaceType
+        let targetSpaceID = context.targetSpaceID ?? 0
+        let targetSpaceType = context.targetSpaceType ?? -1
+        let isFullscreenInvolved = (initialSpaceType == 4 || targetSpaceType == 4)
+
         let settings = AppSettings.shared
-        let duration = max(0.12, min(0.40, settings.spaceTransitionDuration))
+        let baseDuration = max(0.12, min(0.40, settings.spaceTransitionDuration))
+        let duration = isFullscreenInvolved ? max(0.25, baseDuration * 1.25) : baseDuration
         let frequency = 120.0
-        // Direction sign:
-        // direction == .right -> swiping viewport to reveal right space (progress > 0)
-        // direction == .left  -> swiping viewport to reveal left space (progress < 0)
         let directionSign: Double = (direction == .right) ? 1.0 : -1.0
+
         let frames = GestureTrajectoryGenerator.generateTrajectory(
             duration: duration,
             frequency: frequency,
             directionSign: directionSign
         )
+
+        let tBegan = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let beganIso = ISO8601DateFormatter().string(from: Date())
+        print("""
+        [MouseSave Transition Start]
+        • Engine: dockSwipe
+        • From Space: \(initialSpaceID) (type: \(initialSpaceType)) -> To Space: \(targetSpaceID) (type: \(targetSpaceType))
+        • Is Fullscreen Involved: \(isFullscreenInvolved)
+        • Began Timestamp: \(beganIso)
+        • Gesture Frame Count: \(frames.count) (\(String(format: "%.2f", duration))s @ \(frequency)Hz)
+        """)
 
         var frameIndex = 0
         let intervalNs = Int(1_000_000_000 / frequency)
@@ -621,13 +642,26 @@ final class MouseHookHelper {
                 frameIndex += 1
             } else {
                 timer.cancel()
+                let tEnded = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+                let endedIso = ISO8601DateFormatter().string(from: Date())
+                let gestureElapsedMs = Double(tEnded - tBegan) / 1_000_000.0
+                print("[MouseSave Gesture Ended] Timestamp: \(endedIso), Gesture Duration: \(String(format: "%.1f", gestureElapsedMs)) ms")
 
-                // Robust Polling Self-Check:
-                // Poll every 50ms for up to 1.0s after gesture ended to detect Dock space change.
+                // Fix A & C:
+                // 1. Wait 300ms before starting polling so Dock finishes native compositor handoff
+                // 2. Poll interval: 100ms. Max timeout: 1.5s for fullscreen, 1.0s for normal desktop
+                let initialWaitSeconds = 0.30
+                let pollIntervalMs = 100
+                let maxWaitSeconds = isFullscreenInvolved ? 1.50 : 1.00
+                let maxPolls = Int(ceil((maxWaitSeconds - initialWaitSeconds) / (Double(pollIntervalMs) / 1000.0)))
+
                 var pollCount = 0
-                let maxPolls = 20 // 20 * 50ms = 1000ms
                 let pollTimer = DispatchSource.makeTimerSource(queue: self.gestureQueue)
-                pollTimer.schedule(deadline: .now() + 0.05, repeating: .milliseconds(50), leeway: .milliseconds(5))
+                pollTimer.schedule(
+                    deadline: .now() + initialWaitSeconds,
+                    repeating: .milliseconds(pollIntervalMs),
+                    leeway: .milliseconds(5)
+                )
 
                 pollTimer.setEventHandler { [weak self] in
                     guard let self = self else {
@@ -641,26 +675,49 @@ final class MouseHookHelper {
                     if let cur = curSpace, cur != initialSpaceID {
                         // Space successfully changed!
                         pollTimer.cancel()
+                        let tFinish = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+                        let totalElapsedMs = Double(tFinish - tBegan) / 1_000_000.0
+                        print("""
+                        [MouseSave Transition Success]
+                        • Total Elapsed: \(String(format: "%.1f", totalElapsedMs)) ms (after \(pollCount) polls)
+                        • Final Space: \(cur)
+                        • Downgrade Triggered: NO
+                        """)
                         self.dockSwipeConsecutiveFailures = 0
                         self.isSwitching = false
+
+                        // Fix C: Delay haptic until transition is confirmed complete (in background)
+                        DispatchQueue.global(qos: .userInteractive).async {
+                            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        }
                         return
                     }
 
                     if pollCount >= maxPolls {
                         pollTimer.cancel()
+                        let tFinish = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+                        let totalElapsedMs = Double(tFinish - tBegan) / 1_000_000.0
 
                         // Check if Space changed before replaying or counting failure
                         let finalSpaceID = self.getCurrentSpaceID()
-                        if finalSpaceID != initialSpaceID {
-                            // Changed just at the end
+                        if let final = finalSpaceID, final != initialSpaceID {
+                            print("[MouseSave Transition Success at Deadline] Final Space: \(final), Total Elapsed: \(String(format: "%.1f", totalElapsedMs)) ms")
                             self.dockSwipeConsecutiveFailures = 0
                             self.isSwitching = false
+                            DispatchQueue.global(qos: .userInteractive).async {
+                                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                            }
                             return
                         }
 
                         // Space truly did not change
                         self.dockSwipeConsecutiveFailures += 1
-                        print("[MouseSave] DockSwipe self-check failed (consecutive failures: \(self.dockSwipeConsecutiveFailures)/3).")
+                        print("""
+                        [MouseSave Transition Failed / Timeout]
+                        • Total Elapsed: \(String(format: "%.1f", totalElapsedMs)) ms
+                        • Consecutive Failures: \(self.dockSwipeConsecutiveFailures)/3
+                        • Downgrade Triggered: \(self.dockSwipeConsecutiveFailures >= 3 ? "YES" : "NO (Log Only)")
+                        """)
 
                         if self.dockSwipeConsecutiveFailures >= 3 {
                             print("[MouseSave] Reached 3 consecutive failures. Downgrading spaceSwitchEngine to 'cgsTransition'.")
@@ -724,7 +781,7 @@ final class MouseHookHelper {
 
         guard context.hasTargetSpace, let targetSpaceID = context.targetSpaceID else {
             // Reached boundary: gentle feedback & release reentrancy
-            DispatchQueue.main.async {
+            DispatchQueue.global(qos: .userInteractive).async {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
             self.gestureQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
@@ -735,6 +792,17 @@ final class MouseHookHelper {
 
         let displayID = context.displayID
         let settings = AppSettings.shared
+        let isFullscreenInvolved = (context.currentSpaceType == 4 || (context.targetSpaceType ?? -1) == 4)
+
+        let tBegan = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let beganIso = ISO8601DateFormatter().string(from: Date())
+        print("""
+        [MouseSave Transition Start]
+        • Engine: cgsTransition
+        • From Space: \(context.currentSpaceID) (type: \(context.currentSpaceType)) -> To Space: \(targetSpaceID) (type: \(context.targetSpaceType ?? -1))
+        • Is Fullscreen Involved: \(isFullscreenInvolved)
+        • Began Timestamp: \(beganIso)
+        """)
 
         if settings.spaceSlideAnimationEnabled {
             // Direction option:
@@ -749,7 +817,8 @@ final class MouseHookHelper {
             CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
 
             if err == 0 {
-                let duration = Float(max(0.10, min(0.60, settings.spaceTransitionDuration)))
+                let baseDuration = Float(max(0.10, min(0.60, settings.spaceTransitionDuration)))
+                let duration = isFullscreenInvolved ? max(0.22, baseDuration * 1.15) : baseDuration
 
                 // P0: Replace synchronous usleep(10000) with non-blocking queue asyncAfter!
                 self.gestureQueue.asyncAfter(deadline: .now() + 0.01) { [weak self] in
@@ -759,6 +828,14 @@ final class MouseHookHelper {
                     self.gestureQueue.asyncAfter(deadline: .now() + Double(duration) + 0.05) { [weak self] in
                         _ = CGSReleaseTransition(cid, transID)
                         self?.isSwitching = false
+                        let tFinish = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+                        let totalElapsedMs = Double(tFinish - tBegan) / 1_000_000.0
+                        print("[MouseSave Transition Success] Engine: cgsTransition, Total Elapsed: \(String(format: "%.1f", totalElapsedMs)) ms")
+
+                        // Fix C: Delay haptic until completion
+                        DispatchQueue.global(qos: .userInteractive).async {
+                            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        }
                     }
                 }
             } else {
@@ -767,10 +844,9 @@ final class MouseHookHelper {
         } else {
             CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
             self.isSwitching = false
-        }
-
-        DispatchQueue.main.async {
-            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            DispatchQueue.global(qos: .userInteractive).async {
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            }
         }
     }
 
