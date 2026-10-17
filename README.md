@@ -1,7 +1,10 @@
 # 🖱️ MouseSave (Cross-Platform: macOS & Windows)
 
-[![Release](https://img.shields.io/badge/release-v1.1.0-blue.svg)](https://github.com/workingharry/MouseSave/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.0--pre--release-orange.svg)](https://github.com/workingharry/MouseSave/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/workingharry/MouseSave)
+
+> [!NOTE]
+> **v1.4.0 (Pre-Release)**: 包含 Space 切換架構重整（獨立 RunLoop 執行緒、非阻塞 Gesture Queue、Dock Swipe 原生合成與三層健全保底鏈）。目前為預覽測試版本。
 
 **MouseSave** is an ultra-lightweight, native menu-bar and system-tray utility for both **macOS** and **Windows**. It transforms ordinary mice into productivity powerhouses by adding smooth inertial scrolling, customizable side buttons (Buttons 4 & 5), 4-way tilt wheel navigation, independent scroll direction control, and **per-application exclusion / Game Mode**.
 

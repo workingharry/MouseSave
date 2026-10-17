@@ -314,6 +314,90 @@ func testGestureTrajectoryGeneration() {
     print("✅ testGestureTrajectoryGeneration passed (\(frames.count) frames generated)")
 }
 
+struct TargetSpaceContextModel {
+    let currentSpaceID: UInt64
+    let spaceIDs: [UInt64]
+    let direction: SpaceDirection
+
+    var hasTargetSpace: Bool {
+        guard let idx = spaceIDs.firstIndex(of: currentSpaceID) else { return false }
+        let nextIdx = (direction == .left) ? idx - 1 : idx + 1
+        return nextIdx >= 0 && nextIdx < spaceIDs.count
+    }
+
+    var targetSpaceID: UInt64? {
+        guard let idx = spaceIDs.firstIndex(of: currentSpaceID) else { return nil }
+        let nextIdx = (direction == .left) ? idx - 1 : idx + 1
+        guard nextIdx >= 0 && nextIdx < spaceIDs.count else { return nil }
+        return spaceIDs[nextIdx]
+    }
+}
+
+final class DowngradeStateMachine {
+    private(set) var consecutiveFailures: Int = 0
+    private(set) var engine: String = "dockSwipe"
+
+    func recordAttempt(success: Bool, isBoundary: Bool) {
+        if isBoundary {
+            // Boundary: MUST NOT count as failure, MUST NOT trigger downgrade
+            return
+        }
+        if success {
+            consecutiveFailures = 0
+        } else {
+            consecutiveFailures += 1
+            if consecutiveFailures >= 3 {
+                engine = "cgsTransition"
+                consecutiveFailures = 0
+            }
+        }
+    }
+}
+
+func testSpaceContextBoundaryAndDowngrade() {
+    print("Testing testSpaceContextBoundaryAndDowngrade...")
+    let spaces: [UInt64] = [1, 44, 33, 29]
+
+    // 1. Boundary leftmost
+    let ctxLeftmost = TargetSpaceContextModel(currentSpaceID: 1, spaceIDs: spaces, direction: .left)
+    assert(!ctxLeftmost.hasTargetSpace, "Leftmost space must report no target space when going left")
+    assert(ctxLeftmost.targetSpaceID == nil)
+
+    // 2. Boundary rightmost
+    let ctxRightmost = TargetSpaceContextModel(currentSpaceID: 29, spaceIDs: spaces, direction: .right)
+    assert(!ctxRightmost.hasTargetSpace, "Rightmost space must report no target space when going right")
+    assert(ctxRightmost.targetSpaceID == nil)
+
+    // 3. Middle space has target
+    let ctxMiddle = TargetSpaceContextModel(currentSpaceID: 33, spaceIDs: spaces, direction: .right)
+    assert(ctxMiddle.hasTargetSpace)
+    assert(ctxMiddle.targetSpaceID == 29)
+
+    // 4. Downgrade State Machine
+    let sm = DowngradeStateMachine()
+    // Boundary attempt does not increment failure
+    sm.recordAttempt(success: false, isBoundary: true)
+    assert(sm.consecutiveFailures == 0, "Boundary must not count as failure")
+    assert(sm.engine == "dockSwipe")
+
+    // Failure 1
+    sm.recordAttempt(success: false, isBoundary: false)
+    assert(sm.consecutiveFailures == 1)
+    assert(sm.engine == "dockSwipe")
+
+    // Success resets count
+    sm.recordAttempt(success: true, isBoundary: false)
+    assert(sm.consecutiveFailures == 0)
+
+    // 3 Consecutive Failures triggers downgrade
+    sm.recordAttempt(success: false, isBoundary: false) // 1
+    sm.recordAttempt(success: false, isBoundary: false) // 2
+    assert(sm.engine == "dockSwipe")
+    sm.recordAttempt(success: false, isBoundary: false) // 3 -> triggers downgrade
+    assert(sm.engine == "cgsTransition", "Engine must downgrade to cgsTransition after 3 consecutive failures")
+    print("✅ testSpaceContextBoundaryAndDowngrade passed")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
@@ -323,6 +407,7 @@ testSpaceIndexCalculation()
 testSlideTransitionSpecConfiguration()
 testTrackpadSwipeDirectionMapping()
 testGestureTrajectoryGeneration()
-print("All automated test assertions passed successfully!")
+testSpaceContextBoundaryAndDowngrade()
+print("All automated test assertions passed successfully! (9/9 passed)")
 
 

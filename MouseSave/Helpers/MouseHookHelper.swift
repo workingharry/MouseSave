@@ -493,6 +493,54 @@ final class MouseHookHelper {
         }
     }
 
+    private struct TargetSpaceContext {
+        let displayID: String
+        let currentSpaceID: CGSSpaceID
+        let hasTargetSpace: Bool
+        let targetSpaceID: CGSSpaceID?
+    }
+
+    private func getSpaceContext(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) -> TargetSpaceContext? {
+        let cid = CGSMainConnectionID()
+        guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty else {
+            return nil
+        }
+
+        var targetDisplay: [String: Any]? = displays.first
+        if cursorLocation != nil {
+            let mouseLoc = NSEvent.mouseLocation
+            if let activeScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) }),
+               let screenNum = activeScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+               let uuidCF = CGDisplayCreateUUIDFromDisplayID(screenNum)?.takeRetainedValue() {
+                let uuidStr = CFUUIDCreateString(nil, uuidCF) as String
+                if let match = displays.first(where: { ($0["Display Identifier"] as? String) == uuidStr }) {
+                    targetDisplay = match
+                }
+            }
+        }
+
+        guard let display = targetDisplay,
+              let displayID = display["Display Identifier"] as? String,
+              let currentSpace = display["Current Space"] as? [String: Any],
+              let curID = currentSpace["id64"] as? CGSSpaceID,
+              let spaces = display["Spaces"] as? [[String: Any]] else {
+            return nil
+        }
+
+        let spaceIDs = spaces.compactMap { $0["id64"] as? CGSSpaceID }
+        guard let curIndex = spaceIDs.firstIndex(of: curID) else {
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: false, targetSpaceID: nil)
+        }
+
+        let nextIndex = (direction == .left) ? curIndex - 1 : curIndex + 1
+        if nextIndex >= 0 && nextIndex < spaceIDs.count {
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: true, targetSpaceID: spaceIDs[nextIndex])
+        } else {
+            // At boundary (e.g. leftmost or rightmost space)
+            return TargetSpaceContext(displayID: displayID, currentSpaceID: curID, hasTargetSpace: false, targetSpaceID: nil)
+        }
+    }
+
     private func getCurrentSpaceID() -> CGSSpaceID? {
         let cid = CGSMainConnectionID()
         guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty,
@@ -523,7 +571,26 @@ final class MouseHookHelper {
 
     /// P1: Native Dock Swipe Synthesis driven by DispatchSourceTimer (approx 120Hz)
     private func switchSpaceViaDockSwipe(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
-        let initialSpaceID = getCurrentSpaceID()
+        // Check if there is a valid target Space before sending gesture
+        guard let context = getSpaceContext(direction: direction, at: cursorLocation) else {
+            self.isSwitching = false
+            return
+        }
+
+        if !context.hasTargetSpace {
+            // Already at screen boundary! Native trackpad gives rubber-band or haptic alignment feedback.
+            // MUST NOT count as failure, MUST NOT trigger downgrade!
+            print("[MouseSave] Reached boundary (no target space in direction: \(direction)). Skipping dockSwipe without failure penalty.")
+            DispatchQueue.main.async {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+            self.gestureQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.isSwitching = false
+            }
+            return
+        }
+
+        let initialSpaceID = context.currentSpaceID
         let settings = AppSettings.shared
         let duration = max(0.12, min(0.40, settings.spaceTransitionDuration))
         let frequency = 120.0
@@ -555,21 +622,62 @@ final class MouseHookHelper {
             } else {
                 timer.cancel()
 
-                // Self-health check: verify if Space changed after ~0.4s
-                self.gestureQueue.asyncAfter(deadline: .now() + 0.40) { [weak self] in
-                    guard let self = self else { return }
-                    let newSpaceID = self.getCurrentSpaceID()
+                // Robust Polling Self-Check:
+                // Poll every 50ms for up to 1.0s after gesture ended to detect Dock space change.
+                var pollCount = 0
+                let maxPolls = 20 // 20 * 50ms = 1000ms
+                let pollTimer = DispatchSource.makeTimerSource(queue: self.gestureQueue)
+                pollTimer.schedule(deadline: .now() + 0.05, repeating: .milliseconds(50), leeway: .milliseconds(5))
 
-                    if let initial = initialSpaceID, let current = newSpaceID, initial == current {
-                        self.dockSwipeConsecutiveFailures += 1
-                        print("[MouseSave] DockSwipe self-check: Space did not change (failures: \(self.dockSwipeConsecutiveFailures)). Falling back to CGS.")
-                        // Fallback to CGS path
-                        self.switchSpaceViaCGS(direction: direction, at: cursorLocation)
-                    } else {
+                pollTimer.setEventHandler { [weak self] in
+                    guard let self = self else {
+                        pollTimer.cancel()
+                        return
+                    }
+
+                    pollCount += 1
+                    let curSpace = self.getCurrentSpaceID()
+
+                    if let cur = curSpace, cur != initialSpaceID {
+                        // Space successfully changed!
+                        pollTimer.cancel()
                         self.dockSwipeConsecutiveFailures = 0
                         self.isSwitching = false
+                        return
+                    }
+
+                    if pollCount >= maxPolls {
+                        pollTimer.cancel()
+
+                        // Check if Space changed before replaying or counting failure
+                        let finalSpaceID = self.getCurrentSpaceID()
+                        if finalSpaceID != initialSpaceID {
+                            // Changed just at the end
+                            self.dockSwipeConsecutiveFailures = 0
+                            self.isSwitching = false
+                            return
+                        }
+
+                        // Space truly did not change
+                        self.dockSwipeConsecutiveFailures += 1
+                        print("[MouseSave] DockSwipe self-check failed (consecutive failures: \(self.dockSwipeConsecutiveFailures)/3).")
+
+                        if self.dockSwipeConsecutiveFailures >= 3 {
+                            print("[MouseSave] Reached 3 consecutive failures. Downgrading spaceSwitchEngine to 'cgsTransition'.")
+                            AppSettings.shared.spaceSwitchEngine = "cgsTransition"
+                            self.dockSwipeConsecutiveFailures = 0
+                        }
+
+                        // Replay once via CGS only if still on the initial space
+                        if let verifySpace = self.getCurrentSpaceID(), verifySpace == initialSpaceID {
+                            print("[MouseSave] Replaying space switch via fallback CGS transition once.")
+                            self.switchSpaceViaCGS(direction: direction, at: cursorLocation)
+                        } else {
+                            self.isSwitching = false
+                        }
                     }
                 }
+                pollTimer.resume()
             }
         }
         timer.resume()
@@ -604,7 +712,7 @@ final class MouseHookHelper {
     /// P0: CGS Transition Path (Zero usleep, completely non-blocking async queue)
     private func switchSpaceViaCGS(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
         let cid = CGSMainConnectionID()
-        guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty else {
+        guard let context = getSpaceContext(direction: direction, at: cursorLocation) else {
             // Fallback chain: fallback to hardware keyboard shortcut (Control + Arrow)
             let targetKey: CGKeyCode = (direction == .left) ? 123 : 124
             postHardwareShortcut(modifierKey: 59, targetKey: targetKey, modifierFlag: .maskControl)
@@ -614,52 +722,18 @@ final class MouseHookHelper {
             return
         }
 
-        var targetDisplay: [String: Any]? = displays.first
-        if cursorLocation != nil {
-            let mouseLoc = NSEvent.mouseLocation
-            if let activeScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) }),
-               let screenNum = activeScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
-               let uuidCF = CGDisplayCreateUUIDFromDisplayID(screenNum)?.takeRetainedValue() {
-                let uuidStr = CFUUIDCreateString(nil, uuidCF) as String
-                if let match = displays.first(where: { ($0["Display Identifier"] as? String) == uuidStr }) {
-                    targetDisplay = match
-                }
-            }
-        }
-
-        guard let display = targetDisplay,
-              let displayID = display["Display Identifier"] as? String,
-              let currentSpace = display["Current Space"] as? [String: Any],
-              let curID = currentSpace["id64"] as? CGSSpaceID,
-              let spaces = display["Spaces"] as? [[String: Any]] else {
-            self.isSwitching = false
-            return
-        }
-
-        let spaceIDs = spaces.compactMap { $0["id64"] as? CGSSpaceID }
-        guard let curIndex = spaceIDs.firstIndex(of: curID) else {
-            self.isSwitching = false
-            return
-        }
-
-        let nextIndex: Int
-        switch direction {
-        case .left:
-            nextIndex = curIndex - 1
-        case .right:
-            nextIndex = curIndex + 1
-        }
-
-        guard nextIndex >= 0 && nextIndex < spaceIDs.count else {
+        guard context.hasTargetSpace, let targetSpaceID = context.targetSpaceID else {
             // Reached boundary: gentle feedback & release reentrancy
             DispatchQueue.main.async {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
-            self.isSwitching = false
+            self.gestureQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.isSwitching = false
+            }
             return
         }
 
-        let targetSpaceID = spaceIDs[nextIndex]
+        let displayID = context.displayID
         let settings = AppSettings.shared
 
         if settings.spaceSlideAnimationEnabled {
