@@ -99,28 +99,39 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(trackpadBypass, forKey: Keys.trackpadBypass) }
     }
 
+    // Native Slide Transition Animation (Trackpad Fluid Feel)
+    @Published var spaceSlideAnimationEnabled: Bool {
+        didSet { UserDefaults.standard.set(spaceSlideAnimationEnabled, forKey: Keys.spaceSlideAnimationEnabled) }
+    }
+
+    @Published var spaceTransitionDuration: Double {
+        didSet { UserDefaults.standard.set(spaceTransitionDuration, forKey: Keys.spaceTransitionDuration) }
+    }
+
     // MARK: - Keys
 
     private enum Keys {
-        static let isEnabled               = "isEnabled"
-        static let showInMenuBar           = "showInMenuBar"
-        static let launchAtLogin           = "launchAtLogin"
-        static let excludedApps            = "excludedApps"
-        static let smoothScrolling         = "smoothScrolling"
-        static let scrollAcceleration      = "scrollAcceleration"
-        static let scrollFriction          = "scrollFriction"
-        static let invertScrollDirection   = "invertScrollDirection"
-        static let middleClickAction       = "middleClickAction"
-        static let button4Action           = "button4Action"
-        static let button5Action           = "button5Action"
-        static let gestureEnabled          = "gestureEnabled"
-        static let gestureTriggerButton    = "gestureTriggerButton"
-        static let gestureThreshold        = "gestureThreshold"
-        static let gestureSwipeLeftAction  = "gestureSwipeLeftAction"
-        static let gestureSwipeRightAction = "gestureSwipeRightAction"
-        static let gestureSwipeUpAction    = "gestureSwipeUpAction"
-        static let gestureSwipeDownAction  = "gestureSwipeDownAction"
-        static let trackpadBypass          = "trackpadBypass"
+        static let isEnabled                  = "isEnabled"
+        static let showInMenuBar              = "showInMenuBar"
+        static let launchAtLogin              = "launchAtLogin"
+        static let excludedApps               = "excludedApps"
+        static let smoothScrolling            = "smoothScrolling"
+        static let scrollAcceleration         = "scrollAcceleration"
+        static let scrollFriction             = "scrollFriction"
+        static let invertScrollDirection      = "invertScrollDirection"
+        static let middleClickAction          = "middleClickAction"
+        static let button4Action              = "button4Action"
+        static let button5Action              = "button5Action"
+        static let gestureEnabled             = "gestureEnabled"
+        static let gestureTriggerButton       = "gestureTriggerButton"
+        static let gestureThreshold           = "gestureThreshold"
+        static let gestureSwipeLeftAction     = "gestureSwipeLeftAction"
+        static let gestureSwipeRightAction    = "gestureSwipeRightAction"
+        static let gestureSwipeUpAction       = "gestureSwipeUpAction"
+        static let gestureSwipeDownAction     = "gestureSwipeDownAction"
+        static let trackpadBypass             = "trackpadBypass"
+        static let spaceSlideAnimationEnabled = "spaceSlideAnimationEnabled"
+        static let spaceTransitionDuration    = "spaceTransitionDuration"
     }
 
     // MARK: - Init
@@ -177,6 +188,12 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.trackpadBypass) == nil {
             defaults.set(true, forKey: Keys.trackpadBypass)
         }
+        if defaults.object(forKey: Keys.spaceSlideAnimationEnabled) == nil {
+            defaults.set(true, forKey: Keys.spaceSlideAnimationEnabled)
+        }
+        if defaults.object(forKey: Keys.spaceTransitionDuration) == nil {
+            defaults.set(0.28, forKey: Keys.spaceTransitionDuration)
+        }
         if defaults.object(forKey: Keys.excludedApps) == nil {
             defaults.set([
                 "cs2",
@@ -188,26 +205,29 @@ final class AppSettings: ObservableObject {
             ], forKey: Keys.excludedApps)
         }
 
-        self.isEnabled               = defaults.bool(forKey: Keys.isEnabled)
-        self.showInMenuBar           = defaults.bool(forKey: Keys.showInMenuBar)
-        self.launchAtLogin           = defaults.bool(forKey: Keys.launchAtLogin)
-        self.excludedApps            = defaults.stringArray(forKey: Keys.excludedApps) ?? []
-        self.smoothScrolling         = defaults.bool(forKey: Keys.smoothScrolling)
-        self.scrollAcceleration      = defaults.double(forKey: Keys.scrollAcceleration)
-        self.scrollFriction          = defaults.double(forKey: Keys.scrollFriction)
-        self.invertScrollDirection   = defaults.bool(forKey: Keys.invertScrollDirection)
-        self.middleClickAction       = defaults.string(forKey: Keys.middleClickAction) ?? "default"
-        self.button4Action           = defaults.string(forKey: Keys.button4Action) ?? "back"
-        self.button5Action           = defaults.string(forKey: Keys.button5Action) ?? "forward"
-        self.gestureEnabled          = defaults.bool(forKey: Keys.gestureEnabled)
-        self.gestureTriggerButton    = defaults.string(forKey: Keys.gestureTriggerButton) ?? "button4"
-        let savedThreshold           = defaults.double(forKey: Keys.gestureThreshold)
-        self.gestureThreshold        = savedThreshold >= 40.0 ? savedThreshold : 75.0
-        self.gestureSwipeLeftAction  = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "leftSpace"
-        self.gestureSwipeRightAction = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "rightSpace"
-        self.gestureSwipeUpAction    = defaults.string(forKey: Keys.gestureSwipeUpAction) ?? "missionControl"
-        self.gestureSwipeDownAction  = defaults.string(forKey: Keys.gestureSwipeDownAction) ?? "appExpose"
-        self.trackpadBypass          = defaults.bool(forKey: Keys.trackpadBypass)
+        self.isEnabled                  = defaults.bool(forKey: Keys.isEnabled)
+        self.showInMenuBar              = defaults.bool(forKey: Keys.showInMenuBar)
+        self.launchAtLogin              = defaults.bool(forKey: Keys.launchAtLogin)
+        self.excludedApps               = defaults.stringArray(forKey: Keys.excludedApps) ?? []
+        self.smoothScrolling            = defaults.bool(forKey: Keys.smoothScrolling)
+        self.scrollAcceleration         = defaults.double(forKey: Keys.scrollAcceleration)
+        self.scrollFriction             = defaults.double(forKey: Keys.scrollFriction)
+        self.invertScrollDirection      = defaults.bool(forKey: Keys.invertScrollDirection)
+        self.middleClickAction          = defaults.string(forKey: Keys.middleClickAction) ?? "default"
+        self.button4Action              = defaults.string(forKey: Keys.button4Action) ?? "back"
+        self.button5Action              = defaults.string(forKey: Keys.button5Action) ?? "forward"
+        self.gestureEnabled             = defaults.bool(forKey: Keys.gestureEnabled)
+        self.gestureTriggerButton       = defaults.string(forKey: Keys.gestureTriggerButton) ?? "button4"
+        let savedThreshold              = defaults.double(forKey: Keys.gestureThreshold)
+        self.gestureThreshold           = savedThreshold >= 40.0 ? savedThreshold : 75.0
+        self.gestureSwipeLeftAction     = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "leftSpace"
+        self.gestureSwipeRightAction    = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "rightSpace"
+        self.gestureSwipeUpAction       = defaults.string(forKey: Keys.gestureSwipeUpAction) ?? "missionControl"
+        self.gestureSwipeDownAction     = defaults.string(forKey: Keys.gestureSwipeDownAction) ?? "appExpose"
+        self.trackpadBypass             = defaults.bool(forKey: Keys.trackpadBypass)
+        self.spaceSlideAnimationEnabled = defaults.object(forKey: Keys.spaceSlideAnimationEnabled) != nil ? defaults.bool(forKey: Keys.spaceSlideAnimationEnabled) : true
+        let savedDuration               = defaults.double(forKey: Keys.spaceTransitionDuration)
+        self.spaceTransitionDuration    = (savedDuration >= 0.10 && savedDuration <= 0.60) ? savedDuration : 0.28
     }
 
     // MARK: - Helpers

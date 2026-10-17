@@ -20,6 +20,25 @@ private func CGSCopyManagedDisplaySpaces(_ cid: CGSConnectionID) -> CFArray?
 @_silgen_name("CGSManagedDisplaySetCurrentSpace")
 private func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID, _ displayID: CFString, _ spaceID: CGSSpaceID)
 
+typealias CGSTransitionID = UInt32
+
+struct CGSTransitionSpec {
+    var unknown1: UInt32 = 0
+    var type: UInt32 = 4       // 4 = CGSSlide
+    var option: UInt32 = 1     // 1 = CGSLeft, 2 = CGSRight
+    var wid: UInt32 = 0        // 0 = entire screen
+    var backColour: UnsafeMutablePointer<Float>? = nil
+}
+
+@_silgen_name("CGSNewTransition")
+private func CGSNewTransition(_ cid: CGSConnectionID, _ spec: UnsafePointer<CGSTransitionSpec>, _ outTransitionID: UnsafeMutablePointer<CGSTransitionID>) -> Int32
+
+@_silgen_name("CGSInvokeTransition")
+private func CGSInvokeTransition(_ cid: CGSConnectionID, _ transitionID: CGSTransitionID, _ duration: Float) -> Int32
+
+@_silgen_name("CGSReleaseTransition")
+private func CGSReleaseTransition(_ cid: CGSConnectionID, _ transitionID: CGSTransitionID) -> Int32
+
 enum SpaceDirection {
     case left
     case right
@@ -443,7 +462,31 @@ final class MouseHookHelper {
         }
 
         let targetSpaceID = spaceIDs[nextIndex]
-        CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
+        let settings = AppSettings.shared
+
+        if settings.spaceSlideAnimationEnabled {
+            // Direction option:
+            // When moving to the left space, the old screen slides off to the right (option = 2, CGSRight)
+            // When moving to the right space, the old screen slides off to the left (option = 1, CGSLeft)
+            let slideOption: UInt32 = (direction == .left) ? 2 : 1
+            var spec = CGSTransitionSpec(unknown1: 0, type: 4, option: slideOption, wid: 0, backColour: nil)
+            var transID: CGSTransitionID = 0
+            let err = CGSNewTransition(cid, &spec, &transID)
+
+            // Switch to target space in WindowServer
+            CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
+
+            if err == 0 {
+                let duration = Float(settings.spaceTransitionDuration)
+                _ = CGSInvokeTransition(cid, transID, duration)
+                DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + Double(duration) + 0.05) {
+                    _ = CGSReleaseTransition(cid, transID)
+                }
+            }
+        } else {
+            CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
+        }
+
         DispatchQueue.main.async {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         }

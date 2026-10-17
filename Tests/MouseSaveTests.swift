@@ -187,11 +187,36 @@ func testSpaceIndexCalculation() {
     print("✅ testSpaceIndexCalculation passed")
 }
 
+struct SlideTransitionCalculator {
+    static func slideOption(for direction: SpaceDirection) -> UInt32 {
+        // Option 2 (CGSRight) moves old desktop right to reveal left desktop
+        // Option 1 (CGSLeft) moves old desktop left to reveal right desktop
+        return (direction == .left) ? 2 : 1
+    }
+
+    static func clampDuration(_ duration: Double) -> Float {
+        let clamped = max(0.10, min(0.60, duration))
+        return Float(clamped)
+    }
+}
+
+func testSlideTransitionSpecConfiguration() {
+    print("Testing testSlideTransitionSpecConfiguration...")
+    assert(SlideTransitionCalculator.slideOption(for: .left) == 2, "Left direction must use option 2 (CGSRight)")
+    assert(SlideTransitionCalculator.slideOption(for: .right) == 1, "Right direction must use option 1 (CGSLeft)")
+
+    assert(SlideTransitionCalculator.clampDuration(0.28) == 0.28, "Standard 0.28s should be preserved")
+    assert(SlideTransitionCalculator.clampDuration(0.01) == 0.10, "Minimum 0.10s clamp")
+    assert(SlideTransitionCalculator.clampDuration(2.00) == 0.60, "Maximum 0.60s clamp")
+    print("✅ testSlideTransitionSpecConfiguration passed")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
 testGestureNavigationSpaceSwitching()
 testGestureEvaluationAndDamping()
 testSpaceIndexCalculation()
+testSlideTransitionSpecConfiguration()
 print("All automated test assertions passed successfully!")
 

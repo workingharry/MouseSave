@@ -284,19 +284,57 @@ struct GesturesAndButtonsTab: View {
                             .foregroundStyle(.tertiary)
                     }
 
+                    Divider()
+
+                    Toggle(isOn: $settings.spaceSlideAnimationEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("模擬觸控板平滑滑動轉場動畫")
+                                .font(.subheadline.bold())
+                            Text("切換桌面具備與 MacBook 觸控板三指橫向滑動相同的 GPU 硬體平滑位移動畫。")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if settings.spaceSlideAnimationEnabled {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("滑動轉場過渡速度")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f 秒", settings.spaceTransitionDuration))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $settings.spaceTransitionDuration, in: 0.15...0.45, step: 0.01)
+                            HStack {
+                                Text("迅速 (0.15s)")
+                                Spacer()
+                                Text("觸控板標準 (0.28s)")
+                                Spacer()
+                                Text("柔和 (0.45s)")
+                            }
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        }
+                        .padding(.leading, 8)
+                    }
+
+                    Divider()
+
                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
                         GridRow {
                             Text("← 向左滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至左桌面 (原生 Spaces)")
+                            Text("切換至左桌面 (模擬觸控板三指滑動)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {
                             Text("→ 向右滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至右桌面 (原生 Spaces)")
+                            Text("切換至右桌面 (模擬觸控板三指滑動)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {
