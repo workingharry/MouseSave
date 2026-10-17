@@ -65,20 +65,62 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(button5Action, forKey: Keys.button5Action) }
     }
 
+    // Gesture & Space Switching Settings
+    @Published var gestureEnabled: Bool {
+        didSet { UserDefaults.standard.set(gestureEnabled, forKey: Keys.gestureEnabled) }
+    }
+
+    @Published var gestureTriggerButton: String {
+        didSet { UserDefaults.standard.set(gestureTriggerButton, forKey: Keys.gestureTriggerButton) }
+    }
+
+    @Published var gestureThreshold: Double {
+        didSet { UserDefaults.standard.set(gestureThreshold, forKey: Keys.gestureThreshold) }
+    }
+
+    @Published var gestureSwipeLeftAction: String {
+        didSet { UserDefaults.standard.set(gestureSwipeLeftAction, forKey: Keys.gestureSwipeLeftAction) }
+    }
+
+    @Published var gestureSwipeRightAction: String {
+        didSet { UserDefaults.standard.set(gestureSwipeRightAction, forKey: Keys.gestureSwipeRightAction) }
+    }
+
+    @Published var gestureSwipeUpAction: String {
+        didSet { UserDefaults.standard.set(gestureSwipeUpAction, forKey: Keys.gestureSwipeUpAction) }
+    }
+
+    @Published var gestureSwipeDownAction: String {
+        didSet { UserDefaults.standard.set(gestureSwipeDownAction, forKey: Keys.gestureSwipeDownAction) }
+    }
+
+    // Trackpad Bypass (Protect native MacBook gestures)
+    @Published var trackpadBypass: Bool {
+        didSet { UserDefaults.standard.set(trackpadBypass, forKey: Keys.trackpadBypass) }
+    }
+
     // MARK: - Keys
 
     private enum Keys {
-        static let isEnabled             = "isEnabled"
-        static let showInMenuBar         = "showInMenuBar"
-        static let launchAtLogin         = "launchAtLogin"
-        static let excludedApps          = "excludedApps"
-        static let smoothScrolling       = "smoothScrolling"
-        static let scrollAcceleration    = "scrollAcceleration"
-        static let scrollFriction        = "scrollFriction"
-        static let invertScrollDirection = "invertScrollDirection"
-        static let middleClickAction     = "middleClickAction"
-        static let button4Action         = "button4Action"
-        static let button5Action         = "button5Action"
+        static let isEnabled               = "isEnabled"
+        static let showInMenuBar           = "showInMenuBar"
+        static let launchAtLogin           = "launchAtLogin"
+        static let excludedApps            = "excludedApps"
+        static let smoothScrolling         = "smoothScrolling"
+        static let scrollAcceleration      = "scrollAcceleration"
+        static let scrollFriction          = "scrollFriction"
+        static let invertScrollDirection   = "invertScrollDirection"
+        static let middleClickAction       = "middleClickAction"
+        static let button4Action           = "button4Action"
+        static let button5Action           = "button5Action"
+        static let gestureEnabled          = "gestureEnabled"
+        static let gestureTriggerButton    = "gestureTriggerButton"
+        static let gestureThreshold        = "gestureThreshold"
+        static let gestureSwipeLeftAction  = "gestureSwipeLeftAction"
+        static let gestureSwipeRightAction = "gestureSwipeRightAction"
+        static let gestureSwipeUpAction    = "gestureSwipeUpAction"
+        static let gestureSwipeDownAction  = "gestureSwipeDownAction"
+        static let trackpadBypass          = "trackpadBypass"
     }
 
     // MARK: - Init
@@ -111,6 +153,30 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.button5Action) == nil {
             defaults.set("forward", forKey: Keys.button5Action)
         }
+        if defaults.object(forKey: Keys.gestureEnabled) == nil {
+            defaults.set(true, forKey: Keys.gestureEnabled)
+        }
+        if defaults.object(forKey: Keys.gestureTriggerButton) == nil {
+            defaults.set("button4", forKey: Keys.gestureTriggerButton)
+        }
+        if defaults.object(forKey: Keys.gestureThreshold) == nil {
+            defaults.set(35.0, forKey: Keys.gestureThreshold)
+        }
+        if defaults.object(forKey: Keys.gestureSwipeLeftAction) == nil {
+            defaults.set("leftSpace", forKey: Keys.gestureSwipeLeftAction)
+        }
+        if defaults.object(forKey: Keys.gestureSwipeRightAction) == nil {
+            defaults.set("rightSpace", forKey: Keys.gestureSwipeRightAction)
+        }
+        if defaults.object(forKey: Keys.gestureSwipeUpAction) == nil {
+            defaults.set("missionControl", forKey: Keys.gestureSwipeUpAction)
+        }
+        if defaults.object(forKey: Keys.gestureSwipeDownAction) == nil {
+            defaults.set("appExpose", forKey: Keys.gestureSwipeDownAction)
+        }
+        if defaults.object(forKey: Keys.trackpadBypass) == nil {
+            defaults.set(true, forKey: Keys.trackpadBypass)
+        }
         if defaults.object(forKey: Keys.excludedApps) == nil {
             defaults.set([
                 "cs2",
@@ -122,17 +188,25 @@ final class AppSettings: ObservableObject {
             ], forKey: Keys.excludedApps)
         }
 
-        self.isEnabled             = defaults.bool(forKey: Keys.isEnabled)
-        self.showInMenuBar         = defaults.bool(forKey: Keys.showInMenuBar)
-        self.launchAtLogin         = defaults.bool(forKey: Keys.launchAtLogin)
-        self.excludedApps          = defaults.stringArray(forKey: Keys.excludedApps) ?? []
-        self.smoothScrolling       = defaults.bool(forKey: Keys.smoothScrolling)
-        self.scrollAcceleration    = defaults.double(forKey: Keys.scrollAcceleration)
-        self.scrollFriction        = defaults.double(forKey: Keys.scrollFriction)
-        self.invertScrollDirection = defaults.bool(forKey: Keys.invertScrollDirection)
-        self.middleClickAction     = defaults.string(forKey: Keys.middleClickAction) ?? "default"
-        self.button4Action         = defaults.string(forKey: Keys.button4Action) ?? "back"
-        self.button5Action         = defaults.string(forKey: Keys.button5Action) ?? "forward"
+        self.isEnabled               = defaults.bool(forKey: Keys.isEnabled)
+        self.showInMenuBar           = defaults.bool(forKey: Keys.showInMenuBar)
+        self.launchAtLogin           = defaults.bool(forKey: Keys.launchAtLogin)
+        self.excludedApps            = defaults.stringArray(forKey: Keys.excludedApps) ?? []
+        self.smoothScrolling         = defaults.bool(forKey: Keys.smoothScrolling)
+        self.scrollAcceleration      = defaults.double(forKey: Keys.scrollAcceleration)
+        self.scrollFriction          = defaults.double(forKey: Keys.scrollFriction)
+        self.invertScrollDirection   = defaults.bool(forKey: Keys.invertScrollDirection)
+        self.middleClickAction       = defaults.string(forKey: Keys.middleClickAction) ?? "default"
+        self.button4Action           = defaults.string(forKey: Keys.button4Action) ?? "back"
+        self.button5Action           = defaults.string(forKey: Keys.button5Action) ?? "forward"
+        self.gestureEnabled          = defaults.bool(forKey: Keys.gestureEnabled)
+        self.gestureTriggerButton    = defaults.string(forKey: Keys.gestureTriggerButton) ?? "button4"
+        self.gestureThreshold        = defaults.double(forKey: Keys.gestureThreshold) > 0 ? defaults.double(forKey: Keys.gestureThreshold) : 35.0
+        self.gestureSwipeLeftAction  = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "leftSpace"
+        self.gestureSwipeRightAction = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "rightSpace"
+        self.gestureSwipeUpAction    = defaults.string(forKey: Keys.gestureSwipeUpAction) ?? "missionControl"
+        self.gestureSwipeDownAction  = defaults.string(forKey: Keys.gestureSwipeDownAction) ?? "appExpose"
+        self.trackpadBypass          = defaults.bool(forKey: Keys.trackpadBypass)
     }
 
     // MARK: - Helpers

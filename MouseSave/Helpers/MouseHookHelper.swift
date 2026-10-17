@@ -2,6 +2,11 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+extension Notification.Name {
+    static let mouseSaveGestureFired = Notification.Name("com.mousesave.gestureFired")
+    static let mouseSaveButtonEvent  = Notification.Name("com.mousesave.buttonEvent")
+}
+
 /// Low-level macOS mouse interceptor using Quartz Event Services (CGEventTap).
 final class MouseHookHelper {
     static let shared = MouseHookHelper()
@@ -10,10 +15,16 @@ final class MouseHookHelper {
     private var runLoopSource: CFRunLoopSource?
     private var isRunning = false
 
-    // Smooth scrolling velocity & physics state
+    // Smooth scrolling velocity & on-demand physics state
     private var scrollVelocity: Double = 0.0
     private var physicsTimer: Timer?
     private let physicsQueue = DispatchQueue(label: "com.mousesave.physics", qos: .userInteractive)
+
+    // Gesture Hold-and-Drag State Machine
+    private var isGestureTracking = false
+    private var gestureFired = false
+    private var gestureStartPoint: CGPoint = .zero
+    private var gestureTrackingButton: Int = -1
 
     // Workspace observer for active/foreground application
     private var activeAppObserver: NSObjectProtocol?
@@ -41,7 +52,8 @@ final class MouseHookHelper {
 
         let mask: CGEventMask = (1 << CGEventType.scrollWheel.rawValue) |
                                 (1 << CGEventType.otherMouseDown.rawValue) |
-                                (1 << CGEventType.otherMouseUp.rawValue)
+                                (1 << CGEventType.otherMouseUp.rawValue) |
+                                (1 << CGEventType.otherMouseDragged.rawValue)
 
         let observer = Unmanaged.passUnretained(self).toOpaque()
 
@@ -61,7 +73,6 @@ final class MouseHookHelper {
             userInfo: observer
         ) else {
             print("[MouseSave] Failed to create CGEventTap. Ensure Accessibility permissions are granted.")
-            // Retry automatically when permissions are granted
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 if self?.isRunning == false && AppSettings.shared.isEnabled {
                     self?.start()
@@ -77,8 +88,7 @@ final class MouseHookHelper {
         CGEvent.tapEnable(tap: tap, enable: true)
 
         isRunning = true
-        startPhysicsTimer()
-        print("[MouseSave] CGEventTap successfully started.")
+        print("[MouseSave] CGEventTap successfully started with Gesture Engine.")
     }
 
     func stop() {
@@ -129,6 +139,28 @@ final class MouseHookHelper {
         return false
     }
 
+    private func getButtonAction(for buttonNumber: Int) -> String {
+        let settings = AppSettings.shared
+        if buttonNumber == 2 {
+            return settings.middleClickAction
+        } else if buttonNumber == 3 {
+            return settings.button4Action
+        } else if buttonNumber == 4 {
+            return settings.button5Action
+        }
+        return "default"
+    }
+
+    private func getTargetGestureButtonNumber() -> Int {
+        let settings = AppSettings.shared
+        switch settings.gestureTriggerButton {
+        case "button4": return 3
+        case "button5": return 4
+        case "middle":  return 2
+        default:        return -1
+        }
+    }
+
     // MARK: - Event Tap Callback
 
     fileprivate func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -152,13 +184,18 @@ final class MouseHookHelper {
         }
 
         // Game Mode / Exclusion Check:
-        // If an excluded application or game is active, bypass MouseSave completely!
         if isForegroundExcluded() {
             return Unmanaged.passUnretained(event)
         }
 
-        // 1. Scroll Wheel Handling
+        // 1. Scroll Wheel Handling (with Trackpad Bypass)
         if type == .scrollWheel {
+            // Trackpad Bypass: Continuous scroll events come from MacBook Trackpads / Magic Mouse
+            let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+            if settings.trackpadBypass && isContinuous {
+                return Unmanaged.passUnretained(event) // Bypass trackpad 100%
+            }
+
             let deltaY = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
             let pointDeltaY = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
             let fixedPtDeltaY = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
@@ -173,10 +210,10 @@ final class MouseHookHelper {
                     let impulse = effectiveDirection * abs(rawDelta) * basePixels * settings.scrollAcceleration
                     physicsQueue.async {
                         self.scrollVelocity += impulse
+                        self.schedulePhysicsTickIfNeeded()
                     }
                     return nil // Suppress raw tick, let physics loop synthesize smooth ticks
                 } else if settings.invertScrollDirection {
-                    // Invert all scroll delta fields for modern and legacy macOS apps
                     if deltaY != 0 {
                         event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: -deltaY)
                     }
@@ -191,65 +228,148 @@ final class MouseHookHelper {
             }
         }
 
-        // 2. Extra Button Handling (Middle = 2, Button 4 = 3, Button 5 = 4)
-        if type == .otherMouseDown || type == .otherMouseUp {
-            let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
+        // 2. Extra Button & Gesture Drag Handling
+        let targetGestureButton = getTargetGestureButtonNumber()
 
-            let action: String
-            if buttonNumber == 2 {
-                action = settings.middleClickAction
-            } else if buttonNumber == 3 {
-                action = settings.button4Action
-            } else if buttonNumber == 4 {
-                action = settings.button5Action
-            } else {
-                action = "default"
+        if type == .otherMouseDown {
+            let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+
+            // Notify UI canvas for live feedback
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .mouseSaveButtonEvent,
+                    object: nil,
+                    userInfo: ["button": buttonNumber, "isDown": true]
+                )
             }
 
-            if action != "default" && !action.isEmpty {
-                if type == .otherMouseDown {
+            if settings.gestureEnabled && buttonNumber == targetGestureButton && targetGestureButton != -1 {
+                isGestureTracking = true
+                gestureFired = false
+                gestureStartPoint = event.location
+                gestureTrackingButton = buttonNumber
+                return nil // Suppress initial down event to discriminate click vs gesture
+            } else {
+                let action = getButtonAction(for: buttonNumber)
+                if action != "default" && !action.isEmpty {
                     _ = handleButtonAction(action)
+                    return nil
                 }
-                return nil // Suppress raw button event so system doesn't register stray clicks
+            }
+        }
+
+        if type == .otherMouseDragged {
+            let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+            if isGestureTracking && buttonNumber == gestureTrackingButton {
+                let dx = event.location.x - gestureStartPoint.x
+                let dy = event.location.y - gestureStartPoint.y
+                let threshold = settings.gestureThreshold
+
+                if !gestureFired && (abs(dx) >= threshold || abs(dy) >= threshold) {
+                    gestureFired = true
+                    if abs(dx) > abs(dy) {
+                        if dx < 0 {
+                            executeGestureAction(settings.gestureSwipeLeftAction)
+                        } else {
+                            executeGestureAction(settings.gestureSwipeRightAction)
+                        }
+                    } else {
+                        // CGEvent coordinate system has (0,0) at upper-left; moving UP has dy < 0
+                        if dy < 0 {
+                            executeGestureAction(settings.gestureSwipeUpAction)
+                        } else {
+                            executeGestureAction(settings.gestureSwipeDownAction)
+                        }
+                    }
+
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: .mouseSaveGestureFired,
+                            object: nil,
+                            userInfo: ["dx": dx, "dy": dy]
+                        )
+                    }
+                }
+                return nil // Suppress dragging events during gesture window
+            }
+        }
+
+        if type == .otherMouseUp {
+            let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .mouseSaveButtonEvent,
+                    object: nil,
+                    userInfo: ["button": buttonNumber, "isDown": false]
+                )
+            }
+
+            if isGestureTracking && buttonNumber == gestureTrackingButton {
+                isGestureTracking = false
+                if !gestureFired {
+                    // Quick Click without drag: trigger normal click action!
+                    let action = getButtonAction(for: buttonNumber)
+                    if action != "default" && !action.isEmpty {
+                        _ = handleButtonAction(action)
+                    }
+                }
+                return nil
             }
         }
 
         return Unmanaged.passUnretained(event)
     }
 
+    private func executeGestureAction(_ action: String) {
+        switch action {
+        case "leftSpace":
+            // Control + Left Arrow (macOS switch to left space)
+            postSyntheticKeyEvent(keyCode: 123, flags: .maskControl)
+        case "rightSpace":
+            // Control + Right Arrow (macOS switch to right space)
+            postSyntheticKeyEvent(keyCode: 124, flags: .maskControl)
+        case "missionControl":
+            // Control + Up Arrow (Mission Control)
+            postSyntheticKeyEvent(keyCode: 126, flags: .maskControl)
+        case "appExpose":
+            // Control + Down Arrow (Application Windows)
+            postSyntheticKeyEvent(keyCode: 125, flags: .maskControl)
+        case "desktop":
+            // Command + F3 / Desktop
+            postSyntheticKeyEvent(keyCode: 103, flags: .maskCommand)
+        default:
+            break
+        }
+    }
+
     private func handleButtonAction(_ action: String) -> Bool {
         guard action != "default" && !action.isEmpty else { return false }
-
         if action == "none" { return true }
 
         if action == "back" {
-            // Trigger Command + [ (macOS standard back in Safari, Chrome, Finder)
+            // Command + [
             postSyntheticKeyEvent(keyCode: 33, flags: .maskCommand)
             return true
         }
 
         if action == "forward" {
-            // Trigger Command + ] (macOS standard forward in Safari, Chrome, Finder)
+            // Command + ]
             postSyntheticKeyEvent(keyCode: 30, flags: .maskCommand)
             return true
         }
 
         if action == "taskView" {
-            // Trigger macOS Mission Control
-            DispatchQueue.main.async {
-                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mission Control.app"))
-            }
+            executeGestureAction("missionControl")
             return true
         }
 
         if action == "desktop" {
-            // Trigger macOS Show Desktop shortcut (F11 or gesture)
-            postSyntheticKeyEvent(keyCode: 103, flags: .maskCommand)
+            executeGestureAction("desktop")
             return true
         }
 
         if action == "closeWindow" {
-            // Trigger Command + W
             postSyntheticKeyEvent(keyCode: 13, flags: .maskCommand)
             return true
         }
@@ -272,13 +392,15 @@ final class MouseHookHelper {
         }
     }
 
-    // MARK: - Smooth Scrolling Physics
+    // MARK: - On-Demand Smooth Scrolling Physics (0% Idle CPU)
 
-    private func startPhysicsTimer() {
+    private func schedulePhysicsTickIfNeeded() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.physicsTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
-                self?.physicsTick()
+            if self.physicsTimer == nil {
+                self.physicsTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
+                    self?.physicsTick()
+                }
             }
         }
     }
@@ -294,6 +416,9 @@ final class MouseHookHelper {
 
             if abs(self.scrollVelocity) < 1.0 {
                 self.scrollVelocity = 0.0
+                DispatchQueue.main.async { [weak self] in
+                    self?.stopPhysicsTimer()
+                }
                 return
             }
 

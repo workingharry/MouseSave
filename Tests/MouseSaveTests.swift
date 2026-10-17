@@ -15,16 +15,24 @@ struct ScrollPhysicsCalculator {
 }
 
 enum ButtonActionHandler {
-    static func keyCodeAndFlags(for action: String) -> (keyCode: UInt16, isCommand: Bool)? {
+    static func keyCodeAndFlags(for action: String) -> (keyCode: UInt16, isCommand: Bool, isControl: Bool)? {
         switch action {
         case "back":
-            return (33, true) // 33 = '[' with Command
+            return (33, true, false) // 33 = '[' with Command
         case "forward":
-            return (30, true) // 30 = ']' with Command
+            return (30, true, false) // 30 = ']' with Command
         case "desktop":
-            return (103, true)
+            return (103, true, false)
         case "closeWindow":
-            return (13, true)
+            return (13, true, false)
+        case "leftSpace":
+            return (123, false, true) // 123 = Left Arrow with Control
+        case "rightSpace":
+            return (124, false, true) // 124 = Right Arrow with Control
+        case "missionControl":
+            return (126, false, true) // 126 = Up Arrow with Control
+        case "appExpose":
+            return (125, false, true) // 125 = Down Arrow with Control
         default:
             return nil
         }
@@ -55,7 +63,27 @@ func testButtonActionBackAndForward() {
     print("✅ testButtonActionBackAndForward passed")
 }
 
+func testGestureNavigationSpaceSwitching() {
+    print("Testing testGestureNavigationSpaceSwitching...")
+    let leftResult = ButtonActionHandler.keyCodeAndFlags(for: "leftSpace")
+    assert(leftResult != nil, "Gesture 'leftSpace' must be handled!")
+    assert(leftResult?.keyCode == 123, "Left space keyCode must be 123 (Left Arrow)")
+    assert(leftResult?.isControl == true, "Left space must include Control flag")
+
+    let rightResult = ButtonActionHandler.keyCodeAndFlags(for: "rightSpace")
+    assert(rightResult != nil, "Gesture 'rightSpace' must be handled!")
+    assert(rightResult?.keyCode == 124, "Right space keyCode must be 124 (Right Arrow)")
+    assert(rightResult?.isControl == true, "Right space must include Control flag")
+
+    let mcResult = ButtonActionHandler.keyCodeAndFlags(for: "missionControl")
+    assert(mcResult != nil, "Gesture 'missionControl' must be handled!")
+    assert(mcResult?.keyCode == 126, "Mission Control keyCode must be 126 (Up Arrow)")
+    assert(mcResult?.isControl == true, "Mission Control must include Control flag")
+    print("✅ testGestureNavigationSpaceSwitching passed")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
+testGestureNavigationSpaceSwitching()
 print("All automated test assertions passed successfully!")
