@@ -321,10 +321,10 @@ final class MouseHookHelper {
 
                 let absDx = abs(dx)
                 let absDy = abs(dy)
-                let dominanceRatio: Double = 1.35
+                let dominanceRatio: Double = 1.15
 
                 // Evaluate direction: dominant axis check, or fallback if dragged significantly far
-                if absDx > absDy * dominanceRatio || (distance >= threshold * 1.8 && absDx > absDy) {
+                if absDx > absDy * dominanceRatio || (distance >= threshold * 1.6 && absDx > absDy) {
                     gestureFired = true
                     if dx < 0 {
                         executeGestureAction(settings.gestureSwipeLeftAction, cursorLocation: event.location)
@@ -477,7 +477,9 @@ final class MouseHookHelper {
             CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
 
             if err == 0 {
-                let duration = Float(settings.spaceTransitionDuration)
+                let duration = Float(max(0.10, min(0.60, settings.spaceTransitionDuration)))
+                // Yield 10ms so WindowServer compositor commits destination space surface before starting slide
+                usleep(10000)
                 _ = CGSInvokeTransition(cid, transID, duration)
                 DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + Double(duration) + 0.05) {
                     _ = CGSReleaseTransition(cid, transID)

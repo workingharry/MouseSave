@@ -205,10 +205,32 @@ func testSlideTransitionSpecConfiguration() {
     assert(SlideTransitionCalculator.slideOption(for: .left) == 2, "Left direction must use option 2 (CGSRight)")
     assert(SlideTransitionCalculator.slideOption(for: .right) == 1, "Right direction must use option 1 (CGSLeft)")
 
-    assert(SlideTransitionCalculator.clampDuration(0.28) == 0.28, "Standard 0.28s should be preserved")
+    assert(SlideTransitionCalculator.clampDuration(0.22) == 0.22, "Silky 0.22s should be preserved")
     assert(SlideTransitionCalculator.clampDuration(0.01) == 0.10, "Minimum 0.10s clamp")
     assert(SlideTransitionCalculator.clampDuration(2.00) == 0.60, "Maximum 0.60s clamp")
     print("✅ testSlideTransitionSpecConfiguration passed")
+}
+
+struct TrackpadSwipeDirectionMapper {
+    static func targetSpaceDirection(for swipe: GestureDirection) -> SpaceDirection? {
+        switch swipe {
+        case .left:
+            // Swiping mouse left (like trackpad 3-finger swipe left) moves viewport left to reveal right desktop
+            return .right
+        case .right:
+            // Swiping mouse right (like trackpad 3-finger swipe right) moves viewport right to reveal left desktop
+            return .left
+        default:
+            return nil
+        }
+    }
+}
+
+func testTrackpadSwipeDirectionMapping() {
+    print("Testing testTrackpadSwipeDirectionMapping...")
+    assert(TrackpadSwipeDirectionMapper.targetSpaceDirection(for: .left) == .right, "Left swipe must navigate to .right space")
+    assert(TrackpadSwipeDirectionMapper.targetSpaceDirection(for: .right) == .left, "Right swipe must navigate to .left space")
+    print("✅ testTrackpadSwipeDirectionMapping passed")
 }
 
 // Run tests
@@ -218,5 +240,7 @@ testGestureNavigationSpaceSwitching()
 testGestureEvaluationAndDamping()
 testSpaceIndexCalculation()
 testSlideTransitionSpecConfiguration()
+testTrackpadSwipeDirectionMapping()
 print("All automated test assertions passed successfully!")
+
 

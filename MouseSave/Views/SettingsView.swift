@@ -278,8 +278,8 @@ struct GesturesAndButtonsTab: View {
                             Text(String(format: "%.0f px", settings.gestureThreshold))
                                 .foregroundStyle(.secondary)
                         }
-                        Slider(value: $settings.gestureThreshold, in: 40...150, step: 5)
-                        Text("數值越大需滑動越遠才觸發，有效避免按壓側鍵時手部微晃誤觸（預設 75 px）。")
+                        Slider(value: $settings.gestureThreshold, in: 25...120, step: 5)
+                        Text("數值越小反應越迅速敏捷，越大則可避免手部微晃誤觸（預設 45 px）。")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
@@ -306,13 +306,13 @@ struct GesturesAndButtonsTab: View {
                                     .font(.system(size: 12, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $settings.spaceTransitionDuration, in: 0.15...0.45, step: 0.01)
+                            Slider(value: $settings.spaceTransitionDuration, in: 0.12...0.40, step: 0.01)
                             HStack {
-                                Text("迅速 (0.15s)")
+                                Text("極速 (0.12s)")
                                 Spacer()
-                                Text("觸控板標準 (0.28s)")
+                                Text("觸控板絲滑 (0.22s)")
                                 Spacer()
-                                Text("柔和 (0.45s)")
+                                Text("柔和 (0.40s)")
                             }
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
@@ -327,14 +327,14 @@ struct GesturesAndButtonsTab: View {
                             Text("← 向左滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至左桌面 (模擬觸控板三指滑動)")
+                            Text("切換至右桌面 (模擬觸控板三指向左滑)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {
                             Text("→ 向右滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至右桌面 (模擬觸控板三指滑動)")
+                            Text("切換至左桌面 (模擬觸控板三指向右滑)")
                                 .font(.subheadline.bold())
                         }
                         GridRow {

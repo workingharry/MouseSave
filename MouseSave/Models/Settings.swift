@@ -171,13 +171,13 @@ final class AppSettings: ObservableObject {
             defaults.set("button4", forKey: Keys.gestureTriggerButton)
         }
         if defaults.object(forKey: Keys.gestureThreshold) == nil {
-            defaults.set(75.0, forKey: Keys.gestureThreshold)
+            defaults.set(45.0, forKey: Keys.gestureThreshold)
         }
         if defaults.object(forKey: Keys.gestureSwipeLeftAction) == nil {
-            defaults.set("leftSpace", forKey: Keys.gestureSwipeLeftAction)
+            defaults.set("rightSpace", forKey: Keys.gestureSwipeLeftAction)
         }
         if defaults.object(forKey: Keys.gestureSwipeRightAction) == nil {
-            defaults.set("rightSpace", forKey: Keys.gestureSwipeRightAction)
+            defaults.set("leftSpace", forKey: Keys.gestureSwipeRightAction)
         }
         if defaults.object(forKey: Keys.gestureSwipeUpAction) == nil {
             defaults.set("missionControl", forKey: Keys.gestureSwipeUpAction)
@@ -192,7 +192,7 @@ final class AppSettings: ObservableObject {
             defaults.set(true, forKey: Keys.spaceSlideAnimationEnabled)
         }
         if defaults.object(forKey: Keys.spaceTransitionDuration) == nil {
-            defaults.set(0.28, forKey: Keys.spaceTransitionDuration)
+            defaults.set(0.22, forKey: Keys.spaceTransitionDuration)
         }
         if defaults.object(forKey: Keys.excludedApps) == nil {
             defaults.set([
@@ -203,6 +203,17 @@ final class AppSettings: ObservableObject {
                 "Apex",
                 "Blender"
             ], forKey: Keys.excludedApps)
+        }
+
+        // Migrate trackpad horizontal swipe direction for existing installations
+        if !defaults.bool(forKey: "hasMigratedTrackpadSwipeDirection_v1_3_1") {
+            let oldLeft = defaults.string(forKey: Keys.gestureSwipeLeftAction)
+            let oldRight = defaults.string(forKey: Keys.gestureSwipeRightAction)
+            if oldLeft == "leftSpace" && oldRight == "rightSpace" {
+                defaults.set("rightSpace", forKey: Keys.gestureSwipeLeftAction)
+                defaults.set("leftSpace", forKey: Keys.gestureSwipeRightAction)
+            }
+            defaults.set(true, forKey: "hasMigratedTrackpadSwipeDirection_v1_3_1")
         }
 
         self.isEnabled                  = defaults.bool(forKey: Keys.isEnabled)
@@ -219,15 +230,15 @@ final class AppSettings: ObservableObject {
         self.gestureEnabled             = defaults.bool(forKey: Keys.gestureEnabled)
         self.gestureTriggerButton       = defaults.string(forKey: Keys.gestureTriggerButton) ?? "button4"
         let savedThreshold              = defaults.double(forKey: Keys.gestureThreshold)
-        self.gestureThreshold           = savedThreshold >= 40.0 ? savedThreshold : 75.0
-        self.gestureSwipeLeftAction     = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "leftSpace"
-        self.gestureSwipeRightAction    = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "rightSpace"
+        self.gestureThreshold           = savedThreshold >= 20.0 ? savedThreshold : 45.0
+        self.gestureSwipeLeftAction     = defaults.string(forKey: Keys.gestureSwipeLeftAction) ?? "rightSpace"
+        self.gestureSwipeRightAction    = defaults.string(forKey: Keys.gestureSwipeRightAction) ?? "leftSpace"
         self.gestureSwipeUpAction       = defaults.string(forKey: Keys.gestureSwipeUpAction) ?? "missionControl"
         self.gestureSwipeDownAction     = defaults.string(forKey: Keys.gestureSwipeDownAction) ?? "appExpose"
         self.trackpadBypass             = defaults.bool(forKey: Keys.trackpadBypass)
         self.spaceSlideAnimationEnabled = defaults.object(forKey: Keys.spaceSlideAnimationEnabled) != nil ? defaults.bool(forKey: Keys.spaceSlideAnimationEnabled) : true
         let savedDuration               = defaults.double(forKey: Keys.spaceTransitionDuration)
-        self.spaceTransitionDuration    = (savedDuration >= 0.10 && savedDuration <= 0.60) ? savedDuration : 0.28
+        self.spaceTransitionDuration    = (savedDuration >= 0.10 && savedDuration <= 0.60) ? savedDuration : 0.22
     }
 
     // MARK: - Helpers
