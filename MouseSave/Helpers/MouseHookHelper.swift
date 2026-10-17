@@ -325,19 +325,23 @@ final class MouseHookHelper {
         switch action {
         case "leftSpace":
             // Control + Left Arrow (macOS switch to left space)
-            postSyntheticKeyEvent(keyCode: 123, flags: .maskControl)
+            postHardwareShortcut(modifierKey: 59, targetKey: 123, modifierFlag: .maskControl)
         case "rightSpace":
             // Control + Right Arrow (macOS switch to right space)
-            postSyntheticKeyEvent(keyCode: 124, flags: .maskControl)
+            postHardwareShortcut(modifierKey: 59, targetKey: 124, modifierFlag: .maskControl)
         case "missionControl":
-            // Control + Up Arrow (Mission Control)
-            postSyntheticKeyEvent(keyCode: 126, flags: .maskControl)
+            // Open Mission Control directly via System URL for 100% reliable system response
+            DispatchQueue.main.async {
+                let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
+                let config = NSWorkspace.OpenConfiguration()
+                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+            }
         case "appExpose":
             // Control + Down Arrow (Application Windows)
-            postSyntheticKeyEvent(keyCode: 125, flags: .maskControl)
+            postHardwareShortcut(modifierKey: 59, targetKey: 125, modifierFlag: .maskControl)
         case "desktop":
             // Command + F3 / Desktop
-            postSyntheticKeyEvent(keyCode: 103, flags: .maskCommand)
+            postHardwareShortcut(modifierKey: 55, targetKey: 99, modifierFlag: .maskCommand)
         default:
             break
         }
@@ -349,13 +353,13 @@ final class MouseHookHelper {
 
         if action == "back" {
             // Command + [
-            postSyntheticKeyEvent(keyCode: 33, flags: .maskCommand)
+            postHardwareShortcut(modifierKey: 55, targetKey: 33, modifierFlag: .maskCommand)
             return true
         }
 
         if action == "forward" {
             // Command + ]
-            postSyntheticKeyEvent(keyCode: 30, flags: .maskCommand)
+            postHardwareShortcut(modifierKey: 55, targetKey: 30, modifierFlag: .maskCommand)
             return true
         }
 
@@ -370,25 +374,44 @@ final class MouseHookHelper {
         }
 
         if action == "closeWindow" {
-            postSyntheticKeyEvent(keyCode: 13, flags: .maskCommand)
+            // Command + W
+            postHardwareShortcut(modifierKey: 55, targetKey: 13, modifierFlag: .maskCommand)
             return true
         }
 
         return false
     }
 
-    private func postSyntheticKeyEvent(keyCode: CGKeyCode, flags: CGEventFlags) {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) {
-            keyDown.flags = flags
-            keyUp.flags = flags
-            keyDown.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
-            keyUp.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
-            keyDown.post(tap: .cgSessionEventTap)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                keyUp.post(tap: .cgSessionEventTap)
-            }
+    /// Posts a full hardware-level keyboard event sequence with explicit modifier down/up
+    /// to ensure system-wide WindowServer / Dock shortcuts (like Spaces & Mission Control) recognize it.
+    private func postHardwareShortcut(modifierKey: CGKeyCode, targetKey: CGKeyCode, modifierFlag: CGEventFlags) {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // 1. Modifier Key Down
+        let modDown = CGEvent(keyboardEventSource: source, virtualKey: modifierKey, keyDown: true)
+        modDown?.flags = modifierFlag
+        modDown?.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+        modDown?.post(tap: .cghidEventTap)
+
+        // 2. Target Key Down
+        let targetDown = CGEvent(keyboardEventSource: source, virtualKey: targetKey, keyDown: true)
+        targetDown?.flags = modifierFlag
+        targetDown?.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+        targetDown?.post(tap: .cghidEventTap)
+
+        // 3. Small hardware delay (30ms) for WindowServer event registration
+        DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.03) {
+            // 4. Target Key Up
+            let targetUp = CGEvent(keyboardEventSource: source, virtualKey: targetKey, keyDown: false)
+            targetUp?.flags = modifierFlag
+            targetUp?.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+            targetUp?.post(tap: .cghidEventTap)
+
+            // 5. Modifier Key Up
+            let modUp = CGEvent(keyboardEventSource: source, virtualKey: modifierKey, keyDown: false)
+            modUp?.flags = []
+            modUp?.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+            modUp?.post(tap: .cghidEventTap)
         }
     }
 
