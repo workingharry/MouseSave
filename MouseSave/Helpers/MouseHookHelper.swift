@@ -44,13 +44,13 @@ final class MouseHookHelper {
 
         let observer = Unmanaged.passUnretained(self).toOpaque()
 
-        guard let tap = CGEventTapCreate(
-            .cghidEventTap,
-            .headInsertEventTap,
-            .defaultTap,
-            mask,
-            eventTapCallback,
-            observer
+        guard let tap = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: eventTapCallback,
+            userInfo: observer
         ) else {
             print("[MouseSave] Failed to create CGEventTap. Ensure Accessibility permissions are granted.")
             return
@@ -60,7 +60,7 @@ final class MouseHookHelper {
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEventTapEnable(tap, true)
+        CGEvent.tapEnable(tap: tap, enable: true)
 
         isRunning = true
         startPhysicsTimer()
@@ -79,7 +79,7 @@ final class MouseHookHelper {
         stopPhysicsTimer()
 
         if let tap = eventTap {
-            CGEventTapEnable(tap, false)
+            CGEvent.tapEnable(tap: tap, enable: false)
             if let source = runLoopSource {
                 CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
                 self.runLoopSource = nil
@@ -117,11 +117,11 @@ final class MouseHookHelper {
 
     // MARK: - Event Tap Callback
 
-    private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    fileprivate func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Auto-reconnect if disabled by OS timeout or system sleep
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = eventTap {
-                CGEventTapEnable(tap, true)
+                CGEvent.tapEnable(tap: tap, enable: true)
                 print("[MouseSave] CGEventTap re-enabled after timeout/sleep.")
             }
             return Unmanaged.passUnretained(event)
@@ -229,7 +229,8 @@ final class MouseHookHelper {
     // MARK: - Smooth Scrolling Physics
 
     private func startPhysicsTimer() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.physicsTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
                 self?.physicsTick()
             }
