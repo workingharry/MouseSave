@@ -286,6 +286,22 @@ struct GesturesAndButtonsTab: View {
 
                     Divider()
 
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("桌面切換引擎 (Engine)")
+                                .font(.subheadline.bold())
+                            Text("合成手勢由 Dock 原生排程；CGS 轉場由 WindowServer 繪製。")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("", selection: $settings.spaceSwitchEngine) {
+                            Text("原生觸控板手勢 (Dock Swipe)").tag("dockSwipe")
+                            Text("硬體平滑轉場 (CGS Transition)").tag("cgsTransition")
+                        }
+                        .frame(width: 210)
+                    }
+
                     Toggle(isOn: $settings.spaceSlideAnimationEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("模擬觸控板平滑滑動轉場動畫")

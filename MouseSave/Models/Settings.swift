@@ -108,6 +108,11 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(spaceTransitionDuration, forKey: Keys.spaceTransitionDuration) }
     }
 
+    // Space Switching Engine ("dockSwipe" vs "cgsTransition")
+    @Published var spaceSwitchEngine: String {
+        didSet { UserDefaults.standard.set(spaceSwitchEngine, forKey: Keys.spaceSwitchEngine) }
+    }
+
     // MARK: - Keys
 
     private enum Keys {
@@ -132,6 +137,7 @@ final class AppSettings: ObservableObject {
         static let trackpadBypass             = "trackpadBypass"
         static let spaceSlideAnimationEnabled = "spaceSlideAnimationEnabled"
         static let spaceTransitionDuration    = "spaceTransitionDuration"
+        static let spaceSwitchEngine          = "spaceSwitchEngine"
     }
 
     // MARK: - Init
@@ -194,6 +200,9 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.spaceTransitionDuration) == nil {
             defaults.set(0.22, forKey: Keys.spaceTransitionDuration)
         }
+        if defaults.object(forKey: Keys.spaceSwitchEngine) == nil {
+            defaults.set("dockSwipe", forKey: Keys.spaceSwitchEngine)
+        }
         if defaults.object(forKey: Keys.excludedApps) == nil {
             defaults.set([
                 "cs2",
@@ -239,6 +248,7 @@ final class AppSettings: ObservableObject {
         self.spaceSlideAnimationEnabled = defaults.object(forKey: Keys.spaceSlideAnimationEnabled) != nil ? defaults.bool(forKey: Keys.spaceSlideAnimationEnabled) : true
         let savedDuration               = defaults.double(forKey: Keys.spaceTransitionDuration)
         self.spaceTransitionDuration    = (savedDuration >= 0.10 && savedDuration <= 0.60) ? savedDuration : 0.22
+        self.spaceSwitchEngine          = defaults.string(forKey: Keys.spaceSwitchEngine) ?? "dockSwipe"
     }
 
     // MARK: - Helpers

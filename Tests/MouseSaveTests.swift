@@ -233,6 +233,87 @@ func testTrackpadSwipeDirectionMapping() {
     print("✅ testTrackpadSwipeDirectionMapping passed")
 }
 
+struct GestureFrame: Equatable {
+    let phase: UInt32      // 1 = began, 2 = changed, 4 = ended
+    let progress: Double   // signed progress (-1.0 to 1.0)
+    let velocity: Double   // velocity on ended frame
+}
+
+struct GestureTrajectoryGenerator {
+    static func generateTrajectory(
+        duration: Double,
+        frequency: Double = 120.0,
+        directionSign: Double,
+        exitSpeed: Double = 150.0
+    ) -> [GestureFrame] {
+        let totalFrames = max(3, Int(round(duration * frequency)))
+        var frames: [GestureFrame] = []
+        frames.reserveCapacity(totalFrames)
+
+        // 1. Began frame
+        frames.append(GestureFrame(phase: 1, progress: 0.0, velocity: 0.0))
+
+        // 2. Intermediate changed frames (ease-out curve: 1 - pow(1 - t, 2.5))
+        let intermediateCount = totalFrames - 2
+        for i in 1...intermediateCount {
+            let t = Double(i) / Double(totalFrames - 1)
+            let eased = 1.0 - pow(1.0 - t, 2.5) // smooth ease-out
+            let p = directionSign * min(1.0, max(0.0, eased))
+            frames.append(GestureFrame(phase: 2, progress: p, velocity: 0.0))
+        }
+
+        // 3. Ended frame
+        frames.append(GestureFrame(phase: 4, progress: directionSign * 1.0, velocity: directionSign * exitSpeed))
+        return frames
+    }
+}
+
+protocol GestureEventSenderProtocol {
+    func sendFrame(_ frame: GestureFrame)
+}
+
+final class MockGestureEventSender: GestureEventSenderProtocol {
+    var sentFrames: [GestureFrame] = []
+    func sendFrame(_ frame: GestureFrame) {
+        sentFrames.append(frame)
+    }
+}
+
+func testGestureTrajectoryGeneration() {
+    print("Testing testGestureTrajectoryGeneration...")
+    let duration = 0.22
+    let frequency = 120.0
+    let frames = GestureTrajectoryGenerator.generateTrajectory(
+        duration: duration,
+        frequency: frequency,
+        directionSign: -1.0
+    )
+
+    let expectedCount = Int(round(duration * frequency))
+    assert(frames.count == expectedCount, "Frame count must match duration * frequency! Expected \(expectedCount), got \(frames.count)")
+    assert(frames.first?.phase == 1, "First frame must be began (phase 1)")
+    assert(frames.first?.progress == 0.0, "First frame progress must be 0.0")
+    assert(frames.last?.phase == 4, "Last frame must be ended (phase 4)")
+    assert(frames.last?.progress == -1.0, "Last frame progress must reach -1.0")
+    assert(frames.last?.velocity == -150.0, "Last frame must carry exit velocity")
+
+    // Verify monotonic progress progression
+    for i in 1..<frames.count {
+        assert(abs(frames[i].progress) >= abs(frames[i - 1].progress), "Progress magnitude must be monotonically non-decreasing!")
+        if i < frames.count - 1 {
+            assert(frames[i].phase == 2, "Intermediate frames must be changed (phase 2)")
+        }
+    }
+
+    // Verify mock sender
+    let mockSender = MockGestureEventSender()
+    for frame in frames {
+        mockSender.sendFrame(frame)
+    }
+    assert(mockSender.sentFrames.count == expectedCount, "Mock sender must receive all frames")
+    print("✅ testGestureTrajectoryGeneration passed (\(frames.count) frames generated)")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
@@ -241,6 +322,7 @@ testGestureEvaluationAndDamping()
 testSpaceIndexCalculation()
 testSlideTransitionSpecConfiguration()
 testTrackpadSwipeDirectionMapping()
+testGestureTrajectoryGeneration()
 print("All automated test assertions passed successfully!")
 
 

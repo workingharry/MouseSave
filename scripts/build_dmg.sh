@@ -6,7 +6,7 @@ set -e
 # Builds MouseSave.app in Release mode and packages it into a compressed DMG
 # ==============================================================================
 
-VERSION="1.3.1"
+VERSION="1.4.0"
 APP_NAME="MouseSave"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${PROJECT_DIR}/build"

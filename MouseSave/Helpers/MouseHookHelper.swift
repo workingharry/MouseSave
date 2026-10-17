@@ -44,13 +44,56 @@ enum SpaceDirection {
     case right
 }
 
+// MARK: - Gesture Trajectory Model & Generator (Pure Function)
+struct GestureFrame: Equatable {
+    let phase: UInt32      // 1 = began, 2 = changed, 4 = ended
+    let progress: Double   // signed progress (-1.0 to 1.0)
+    let velocity: Double   // velocity on ended frame
+}
+
+struct GestureTrajectoryGenerator {
+    static func generateTrajectory(
+        duration: Double,
+        frequency: Double = 120.0,
+        directionSign: Double,
+        exitSpeed: Double = 150.0
+    ) -> [GestureFrame] {
+        let totalFrames = max(3, Int(round(duration * frequency)))
+        var frames: [GestureFrame] = []
+        frames.reserveCapacity(totalFrames)
+
+        // 1. Began frame
+        frames.append(GestureFrame(phase: 1, progress: 0.0, velocity: 0.0))
+
+        // 2. Intermediate changed frames (ease-out curve: 1 - pow(1 - t, 2.5))
+        let intermediateCount = totalFrames - 2
+        for i in 1...intermediateCount {
+            let t = Double(i) / Double(totalFrames - 1)
+            let eased = 1.0 - pow(1.0 - t, 2.5) // smooth ease-out
+            let p = directionSign * min(1.0, max(0.0, eased))
+            frames.append(GestureFrame(phase: 2, progress: p, velocity: 0.0))
+        }
+
+        // 3. Ended frame
+        frames.append(GestureFrame(phase: 4, progress: directionSign * 1.0, velocity: directionSign * exitSpeed))
+        return frames
+    }
+}
+
 /// Low-level macOS mouse interceptor using Quartz Event Services (CGEventTap).
 final class MouseHookHelper {
     static let shared = MouseHookHelper()
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var tapThread: Thread?
+    private var tapRunLoop: CFRunLoop?
     private var isRunning = false
+
+    // Dedicated serial queue for non-blocking gesture & Space operations (P0)
+    private let gestureQueue = DispatchQueue(label: "com.mousesave.gesture", qos: .userInteractive)
+    private var isSwitching = false // Reentrancy protection flag
+    private var dockSwipeConsecutiveFailures = 0
 
     // Smooth scrolling velocity & on-demand physics state
     private var scrollVelocity: Double = 0.0
@@ -88,45 +131,74 @@ final class MouseHookHelper {
             self?.updateCurrentActiveApp()
         }
 
-        let mask: CGEventMask = (1 << CGEventType.scrollWheel.rawValue) |
-                                (1 << CGEventType.otherMouseDown.rawValue) |
-                                (1 << CGEventType.otherMouseUp.rawValue) |
-                                (1 << CGEventType.otherMouseDragged.rawValue)
+        logStartupDiagnostics()
 
-        let observer = Unmanaged.passUnretained(self).toOpaque()
+        // P0: Run CGEventTap on a dedicated background Thread with its own CFRunLoop.
+        // This completely eliminates tapDisabledByTimeout caused by main-thread UI/Hangs.
+        let thread = Thread { [weak self] in
+            guard let self = self else { return }
+            self.tapRunLoop = CFRunLoopGetCurrent()
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: eventTapCallback,
-            userInfo: observer
-        ) ?? CGEvent.tapCreate(
-            tap: .cghidEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: eventTapCallback,
-            userInfo: observer
-        ) else {
-            print("[MouseSave] Failed to create CGEventTap. Ensure Accessibility permissions are granted.")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                if self?.isRunning == false && AppSettings.shared.isEnabled {
-                    self?.start()
+            let mask: CGEventMask = (1 << CGEventType.scrollWheel.rawValue) |
+                                    (1 << CGEventType.otherMouseDown.rawValue) |
+                                    (1 << CGEventType.otherMouseUp.rawValue) |
+                                    (1 << CGEventType.otherMouseDragged.rawValue)
+
+            let observer = Unmanaged.passUnretained(self).toOpaque()
+
+            guard let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: eventTapCallback,
+                userInfo: observer
+            ) ?? CGEvent.tapCreate(
+                tap: .cghidEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: eventTapCallback,
+                userInfo: observer
+            ) else {
+                print("[MouseSave] Failed to create CGEventTap. Ensure Accessibility permissions are granted.")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    if self?.isRunning == false && AppSettings.shared.isEnabled {
+                        self?.start()
+                    }
                 }
+                return
             }
-            return
+
+            self.eventTap = tap
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            self.runLoopSource = source
+            CFRunLoopAddSource(self.tapRunLoop, source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+
+            self.isRunning = true
+            print("[MouseSave] CGEventTap running on dedicated background thread with isolated CFRunLoop.")
+
+            CFRunLoopRun()
         }
 
-        self.eventTap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
+        thread.name = "com.mousesave.eventtap"
+        thread.qualityOfService = .userInteractive
+        self.tapThread = thread
+        thread.start()
+    }
 
-        isRunning = true
-        print("[MouseSave] CGEventTap successfully started with Gesture Engine.")
+    private func logStartupDiagnostics() {
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        let screens = NSScreen.screens.count
+        let separateSpaces = UserDefaults.standard.persistentDomain(forName: "com.apple.spaces")?["spans-displays"] as? Bool ?? false
+        print("""
+        [MouseSave Diagnostics]
+        • macOS Version: \(osVersion)
+        • Connected Displays: \(screens)
+        • Displays have separate Spaces: \(!separateSpaces)
+        • Selected Space Switch Engine: \(AppSettings.shared.spaceSwitchEngine)
+        """)
     }
 
     func stop() {
@@ -142,12 +214,17 @@ final class MouseHookHelper {
 
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
-            if let source = runLoopSource {
-                CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            if let source = runLoopSource, let loop = tapRunLoop {
+                CFRunLoopRemoveSource(loop, source, .commonModes)
                 self.runLoopSource = nil
             }
             self.eventTap = nil
         }
+        if let loop = tapRunLoop {
+            CFRunLoopStop(loop)
+            self.tapRunLoop = nil
+        }
+        self.tapThread = nil
         print("[MouseSave] CGEventTap stopped.")
     }
 
@@ -291,7 +368,9 @@ final class MouseHookHelper {
             } else {
                 let action = getButtonAction(for: buttonNumber)
                 if action != "default" && !action.isEmpty {
-                    _ = handleButtonAction(action)
+                    gestureQueue.async { [weak self] in
+                        _ = self?.handleButtonAction(action)
+                    }
                     return nil
                 }
             }
@@ -326,19 +405,19 @@ final class MouseHookHelper {
                 // Evaluate direction: dominant axis check, or fallback if dragged significantly far
                 if absDx > absDy * dominanceRatio || (distance >= threshold * 1.6 && absDx > absDy) {
                     gestureFired = true
-                    if dx < 0 {
-                        executeGestureAction(settings.gestureSwipeLeftAction, cursorLocation: event.location)
-                    } else {
-                        executeGestureAction(settings.gestureSwipeRightAction, cursorLocation: event.location)
+                    let action = dx < 0 ? settings.gestureSwipeLeftAction : settings.gestureSwipeRightAction
+                    let loc = event.location
+                    gestureQueue.async { [weak self] in
+                        self?.executeGestureAction(action, cursorLocation: loc)
                     }
                     postGestureFired(dx: dx, dy: dy)
                 } else if absDy > absDx * dominanceRatio || (distance >= threshold * 1.8 && absDy > absDx) {
                     // In Quartz coordinate system, upward drag has dy < 0
                     gestureFired = true
-                    if dy < 0 {
-                        executeGestureAction(settings.gestureSwipeUpAction, cursorLocation: event.location)
-                    } else {
-                        executeGestureAction(settings.gestureSwipeDownAction, cursorLocation: event.location)
+                    let action = dy < 0 ? settings.gestureSwipeUpAction : settings.gestureSwipeDownAction
+                    let loc = event.location
+                    gestureQueue.async { [weak self] in
+                        self?.executeGestureAction(action, cursorLocation: loc)
                     }
                     postGestureFired(dx: dx, dy: dy)
                 }
@@ -363,7 +442,9 @@ final class MouseHookHelper {
                     // Quick Click without drag: trigger normal click action!
                     let action = getButtonAction(for: buttonNumber)
                     if action != "default" && !action.isEmpty {
-                        _ = handleButtonAction(action)
+                        gestureQueue.async { [weak self] in
+                            _ = self?.handleButtonAction(action)
+                        }
                     }
                 }
                 return nil
@@ -412,12 +493,124 @@ final class MouseHookHelper {
         }
     }
 
+    private func getCurrentSpaceID() -> CGSSpaceID? {
+        let cid = CGSMainConnectionID()
+        guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty,
+              let display = displays.first,
+              let currentSpace = display["Current Space"] as? [String: Any],
+              let curID = currentSpace["id64"] as? CGSSpaceID else {
+            return nil
+        }
+        return curID
+    }
+
     private func switchSpace(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
+        // P0 Reentrancy protection: ignore rapid duplicate triggers while transition is active
+        guard !isSwitching else {
+            print("[MouseSave] Space switch dropped due to active in-flight transition.")
+            return
+        }
+        isSwitching = true
+
+        let engine = AppSettings.shared.spaceSwitchEngine
+
+        if engine == "dockSwipe" {
+            switchSpaceViaDockSwipe(direction: direction, at: cursorLocation)
+        } else {
+            switchSpaceViaCGS(direction: direction, at: cursorLocation)
+        }
+    }
+
+    /// P1: Native Dock Swipe Synthesis driven by DispatchSourceTimer (approx 120Hz)
+    private func switchSpaceViaDockSwipe(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
+        let initialSpaceID = getCurrentSpaceID()
+        let settings = AppSettings.shared
+        let duration = max(0.12, min(0.40, settings.spaceTransitionDuration))
+        let frequency = 120.0
+        // Direction sign:
+        // direction == .right -> swiping viewport to reveal right space (progress > 0)
+        // direction == .left  -> swiping viewport to reveal left space (progress < 0)
+        let directionSign: Double = (direction == .right) ? 1.0 : -1.0
+        let frames = GestureTrajectoryGenerator.generateTrajectory(
+            duration: duration,
+            frequency: frequency,
+            directionSign: directionSign
+        )
+
+        var frameIndex = 0
+        let intervalNs = Int(1_000_000_000 / frequency)
+        let timer = DispatchSource.makeTimerSource(queue: gestureQueue)
+        timer.schedule(deadline: .now(), repeating: .nanoseconds(intervalNs), leeway: .nanoseconds(0))
+
+        timer.setEventHandler { [weak self] in
+            guard let self = self else {
+                timer.cancel()
+                return
+            }
+
+            if frameIndex < frames.count {
+                let frame = frames[frameIndex]
+                self.postDockSwipeEvent(frame: frame)
+                frameIndex += 1
+            } else {
+                timer.cancel()
+
+                // Self-health check: verify if Space changed after ~0.4s
+                self.gestureQueue.asyncAfter(deadline: .now() + 0.40) { [weak self] in
+                    guard let self = self else { return }
+                    let newSpaceID = self.getCurrentSpaceID()
+
+                    if let initial = initialSpaceID, let current = newSpaceID, initial == current {
+                        self.dockSwipeConsecutiveFailures += 1
+                        print("[MouseSave] DockSwipe self-check: Space did not change (failures: \(self.dockSwipeConsecutiveFailures)). Falling back to CGS.")
+                        // Fallback to CGS path
+                        self.switchSpaceViaCGS(direction: direction, at: cursorLocation)
+                    } else {
+                        self.dockSwipeConsecutiveFailures = 0
+                        self.isSwitching = false
+                    }
+                }
+            }
+        }
+        timer.resume()
+    }
+
+    /// Posts synthesized Dock Control swipe event
+    private func postDockSwipeEvent(frame: GestureFrame) {
+        // Event type 30 is kCGSEventDockControl
+        guard let cgEvent = CGEvent(source: nil) else { return }
+        cgEvent.type = CGEventType(rawValue: 30) ?? .null
+        cgEvent.setIntegerValueField(.eventSourceUserData, value: MouseHookHelper.synthesizedEventUserData)
+
+        // Field 130: Gesture Phase (1 = began, 2 = changed, 4 = ended)
+        cgEvent.setIntegerValueField(CGEventField(rawValue: 130)!, value: Int64(frame.phase))
+
+        // Field 110: Subtype (dock control)
+        cgEvent.setIntegerValueField(CGEventField(rawValue: 110)!, value: 1)
+
+        // Field 132: Signed progress
+        let fixedPtProgress = Int64(frame.progress * 65536.0)
+        cgEvent.setIntegerValueField(CGEventField(rawValue: 132)!, value: fixedPtProgress)
+
+        // Field 134: Velocity on ended
+        if frame.phase == 4 {
+            let fixedPtVelocity = Int64(frame.velocity * 65536.0)
+            cgEvent.setIntegerValueField(CGEventField(rawValue: 134)!, value: fixedPtVelocity)
+        }
+
+        cgEvent.post(tap: .cgSessionEventTap)
+    }
+
+    /// P0: CGS Transition Path (Zero usleep, completely non-blocking async queue)
+    private func switchSpaceViaCGS(direction: SpaceDirection, at cursorLocation: CGPoint? = nil) {
         let cid = CGSMainConnectionID()
         guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]], !displays.isEmpty else {
-            // Fallback to hardware shortcut if CGS returns nil
+            // Fallback chain: fallback to hardware keyboard shortcut (Control + Arrow)
             let targetKey: CGKeyCode = (direction == .left) ? 123 : 124
             postHardwareShortcut(modifierKey: 59, targetKey: targetKey, modifierFlag: .maskControl)
+            self.gestureQueue.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                self?.isSwitching = false
+            }
             return
         }
 
@@ -439,11 +632,15 @@ final class MouseHookHelper {
               let currentSpace = display["Current Space"] as? [String: Any],
               let curID = currentSpace["id64"] as? CGSSpaceID,
               let spaces = display["Spaces"] as? [[String: Any]] else {
+            self.isSwitching = false
             return
         }
 
         let spaceIDs = spaces.compactMap { $0["id64"] as? CGSSpaceID }
-        guard let curIndex = spaceIDs.firstIndex(of: curID) else { return }
+        guard let curIndex = spaceIDs.firstIndex(of: curID) else {
+            self.isSwitching = false
+            return
+        }
 
         let nextIndex: Int
         switch direction {
@@ -454,10 +651,11 @@ final class MouseHookHelper {
         }
 
         guard nextIndex >= 0 && nextIndex < spaceIDs.count else {
-            // Reached boundary: gentle feedback
+            // Reached boundary: gentle feedback & release reentrancy
             DispatchQueue.main.async {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
+            self.isSwitching = false
             return
         }
 
@@ -478,15 +676,23 @@ final class MouseHookHelper {
 
             if err == 0 {
                 let duration = Float(max(0.10, min(0.60, settings.spaceTransitionDuration)))
-                // Yield 10ms so WindowServer compositor commits destination space surface before starting slide
-                usleep(10000)
-                _ = CGSInvokeTransition(cid, transID, duration)
-                DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + Double(duration) + 0.05) {
-                    _ = CGSReleaseTransition(cid, transID)
+
+                // P0: Replace synchronous usleep(10000) with non-blocking queue asyncAfter!
+                self.gestureQueue.asyncAfter(deadline: .now() + 0.01) { [weak self] in
+                    guard let self = self else { return }
+                    _ = CGSInvokeTransition(cid, transID, duration)
+
+                    self.gestureQueue.asyncAfter(deadline: .now() + Double(duration) + 0.05) { [weak self] in
+                        _ = CGSReleaseTransition(cid, transID)
+                        self?.isSwitching = false
+                    }
                 }
+            } else {
+                self.isSwitching = false
             }
         } else {
             CGSManagedDisplaySetCurrentSpace(cid, displayID as CFString, targetSpaceID)
+            self.isSwitching = false
         }
 
         DispatchQueue.main.async {
