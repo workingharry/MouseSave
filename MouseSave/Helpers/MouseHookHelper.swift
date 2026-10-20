@@ -100,12 +100,15 @@ final class MouseHookHelper {
     private var physicsTimer: Timer?
     private let physicsQueue = DispatchQueue(label: "com.mousesave.physics", qos: .userInteractive)
 
-    // Gesture Hold-and-Drag State Machine
+    // Gesture Hold-and-Drag State Machine (with Mac Mouse Fix style flick velocity tracking)
     private var isGestureTracking = false
     private var gestureFired = false
     private var gestureStartPoint: CGPoint = .zero
     private var gestureStartTime: Date = Date()
     private var gestureTrackingButton: Int = -1
+    private var gestureLastPoint: CGPoint = .zero
+    private var gestureLastTime: Date = Date()
+    private var gestureVelocity: Double = 0.0
 
     // Workspace observer for active/foreground application
     private var activeAppObserver: NSObjectProtocol?
@@ -362,7 +365,10 @@ final class MouseHookHelper {
                 isGestureTracking = true
                 gestureFired = false
                 gestureStartPoint = event.location
+                gestureLastPoint = event.location
                 gestureStartTime = Date()
+                gestureLastTime = Date()
+                gestureVelocity = 0.0
                 gestureTrackingButton = buttonNumber
                 return nil // Suppress initial down event to discriminate click vs gesture
             } else {
@@ -383,10 +389,22 @@ final class MouseHookHelper {
                     return nil // Already triggered for this drag sequence
                 }
 
-                let duration = Date().timeIntervalSince(gestureStartTime)
-                // Filter out thumb-press micro-jitter (must hold for at least 50ms)
-                guard duration >= 0.05 else {
+                let now = Date()
+                let duration = now.timeIntervalSince(gestureStartTime)
+                // Filter out thumb-press micro-jitter (must hold for at least 40ms)
+                guard duration >= 0.04 else {
                     return nil
+                }
+
+                // Calculate instantaneous flick velocity (points per second)
+                let dt = now.timeIntervalSince(gestureLastTime)
+                if dt >= 0.008 { // Sample velocity at ~120Hz window
+                    let stepDist = hypot(event.location.x - gestureLastPoint.x, event.location.y - gestureLastPoint.y)
+                    let currentInstVelocity = stepDist / dt
+                    // Exponential moving average for smooth velocity estimation
+                    gestureVelocity = (gestureVelocity * 0.4) + (currentInstVelocity * 0.6)
+                    gestureLastPoint = event.location
+                    gestureLastTime = now
                 }
 
                 let dx = event.location.x - gestureStartPoint.x
@@ -394,7 +412,13 @@ final class MouseHookHelper {
                 let distance = hypot(dx, dy)
                 let threshold = settings.gestureThreshold
 
-                guard distance >= threshold else {
+                // Mac Mouse Fix inspired dual threshold:
+                // Normal swipe distance >= threshold (e.g. 45px), OR
+                // High-velocity flick: distance >= threshold * 0.50 (e.g. 22px) AND velocity >= 450 px/s
+                let isFlickCommit = (distance >= threshold * 0.50 && gestureVelocity >= 450.0)
+                let isDistanceCommit = (distance >= threshold)
+
+                guard isDistanceCommit || isFlickCommit else {
                     return nil
                 }
 
@@ -403,7 +427,7 @@ final class MouseHookHelper {
                 let dominanceRatio: Double = 1.15
 
                 // Evaluate direction: dominant axis check, or fallback if dragged significantly far
-                if absDx > absDy * dominanceRatio || (distance >= threshold * 1.6 && absDx > absDy) {
+                if absDx > absDy * dominanceRatio || (distance >= threshold * 1.5 && absDx > absDy) {
                     gestureFired = true
                     let action = dx < 0 ? settings.gestureSwipeLeftAction : settings.gestureSwipeRightAction
                     let loc = event.location
@@ -411,7 +435,7 @@ final class MouseHookHelper {
                         self?.executeGestureAction(action, cursorLocation: loc)
                     }
                     postGestureFired(dx: dx, dy: dy)
-                } else if absDy > absDx * dominanceRatio || (distance >= threshold * 1.8 && absDy > absDx) {
+                } else if absDy > absDx * dominanceRatio || (distance >= threshold * 1.6 && absDy > absDx) {
                     // In Quartz coordinate system, upward drag has dy < 0
                     gestureFired = true
                     let action = dy < 0 ? settings.gestureSwipeUpAction : settings.gestureSwipeDownAction
@@ -470,6 +494,12 @@ final class MouseHookHelper {
             switchSpace(direction: .left, at: cursorLocation)
         case "rightSpace":
             switchSpace(direction: .right, at: cursorLocation)
+        case "back":
+            // Browser history back (Command + [ or Command + Left)
+            postHardwareShortcut(modifierKey: 55, targetKey: 33, modifierFlag: .maskCommand)
+        case "forward":
+            // Browser history forward (Command + ] or Command + Right)
+            postHardwareShortcut(modifierKey: 55, targetKey: 30, modifierFlag: .maskCommand)
         case "missionControl":
             triggerMissionControl()
         case "appExpose":

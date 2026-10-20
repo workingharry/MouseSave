@@ -398,6 +398,54 @@ func testSpaceContextBoundaryAndDowngrade() {
     print("✅ testSpaceContextBoundaryAndDowngrade passed")
 }
 
+struct FlickGestureEvaluator {
+    static func evaluate(
+        dx: Double,
+        dy: Double,
+        velocity: Double,
+        duration: TimeInterval,
+        threshold: Double = 45.0,
+        dominanceRatio: Double = 1.15
+    ) -> GestureDirection? {
+        guard duration >= 0.04 else { return nil }
+        let distance = hypot(dx, dy)
+        let isDistanceCommit = (distance >= threshold)
+        let isFlickCommit = (distance >= threshold * 0.50 && velocity >= 450.0)
+
+        guard isDistanceCommit || isFlickCommit else { return nil }
+
+        let absDx = abs(dx)
+        let absDy = abs(dy)
+
+        if absDx > absDy * dominanceRatio || (distance >= threshold * 1.5 && absDx > absDy) {
+            return dx < 0 ? .left : .right
+        } else if absDy > absDx * dominanceRatio || (distance >= threshold * 1.6 && absDy > absDx) {
+            return dy < 0 ? .up : .down
+        }
+
+        return nil
+    }
+}
+
+func testFlickVelocityDualThreshold() {
+    print("Testing testFlickVelocityDualThreshold...")
+    // 1. Tiny jitter (< 40ms or distance < 20px) -> nil
+    assert(FlickGestureEvaluator.evaluate(dx: -15, dy: 0, velocity: 100, duration: 0.03) == nil)
+
+    // 2. Slow drag not meeting threshold (distance 30px < 45px, velocity 150 < 450) -> nil
+    assert(FlickGestureEvaluator.evaluate(dx: -30, dy: 0, velocity: 150, duration: 0.1) == nil)
+
+    // 3. Fast flick! Distance 25px (>= 22.5px) and velocity 600 px/s (>= 450) -> .left!
+    assert(FlickGestureEvaluator.evaluate(dx: -25, dy: 0, velocity: 600, duration: 0.05) == .left, "Flick with high velocity must commit earlier!")
+
+    // 4. Normal drag crossing full distance (50px >= 45px) with modest velocity -> .right
+    assert(FlickGestureEvaluator.evaluate(dx: 50, dy: 5, velocity: 200, duration: 0.12) == .right)
+
+    // 5. Upward flick (dy negative)
+    assert(FlickGestureEvaluator.evaluate(dx: 0, dy: -30, velocity: 500, duration: 0.06) == .up)
+    print("✅ testFlickVelocityDualThreshold passed")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
@@ -408,6 +456,7 @@ testSlideTransitionSpecConfiguration()
 testTrackpadSwipeDirectionMapping()
 testGestureTrajectoryGeneration()
 testSpaceContextBoundaryAndDowngrade()
-print("All automated test assertions passed successfully! (9/9 passed)")
+testFlickVelocityDualThreshold()
+print("All automated test assertions passed successfully! (10/10 passed)")
 
 

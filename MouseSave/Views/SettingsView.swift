@@ -338,34 +338,62 @@ struct GesturesAndButtonsTab: View {
 
                     Divider()
 
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                         GridRow {
                             Text("← 向左滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至右桌面 (模擬觸控板三指向左滑)")
-                                .font(.subheadline.bold())
+                            Picker("", selection: $settings.gestureSwipeLeftAction) {
+                                Text("切換至右桌面 (Spaces)").tag("rightSpace")
+                                Text("切換至左桌面 (Spaces)").tag("leftSpace")
+                                Text("網頁上一頁 (Back)").tag("back")
+                                Text("網頁下一頁 (Forward)").tag("forward")
+                                Text("調度中心 (Mission Control)").tag("missionControl")
+                                Text("應用程式視窗 (App Exposé)").tag("appExpose")
+                                Text("顯示桌面").tag("desktop")
+                            }
+                            .frame(width: 220)
                         }
                         GridRow {
                             Text("→ 向右滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("切換至左桌面 (模擬觸控板三指向右滑)")
-                                .font(.subheadline.bold())
+                            Picker("", selection: $settings.gestureSwipeRightAction) {
+                                Text("切換至左桌面 (Spaces)").tag("leftSpace")
+                                Text("切換至右桌面 (Spaces)").tag("rightSpace")
+                                Text("網頁上一頁 (Back)").tag("back")
+                                Text("網頁下一頁 (Forward)").tag("forward")
+                                Text("調度中心 (Mission Control)").tag("missionControl")
+                                Text("應用程式視窗 (App Exposé)").tag("appExpose")
+                                Text("顯示桌面").tag("desktop")
+                            }
+                            .frame(width: 220)
                         }
                         GridRow {
                             Text("↑ 向上滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("調度中心 (Mission Control)")
-                                .font(.subheadline.bold())
+                            Picker("", selection: $settings.gestureSwipeUpAction) {
+                                Text("調度中心 (Mission Control)").tag("missionControl")
+                                Text("應用程式視窗 (App Exposé)").tag("appExpose")
+                                Text("顯示桌面").tag("desktop")
+                                Text("切換至左桌面 (Spaces)").tag("leftSpace")
+                                Text("切換至右桌面 (Spaces)").tag("rightSpace")
+                            }
+                            .frame(width: 220)
                         }
                         GridRow {
                             Text("↓ 向下滑動")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("應用程式視窗 (App Exposé)")
-                                .font(.subheadline.bold())
+                            Picker("", selection: $settings.gestureSwipeDownAction) {
+                                Text("應用程式視窗 (App Exposé)").tag("appExpose")
+                                Text("調度中心 (Mission Control)").tag("missionControl")
+                                Text("顯示桌面").tag("desktop")
+                                Text("切換至左桌面 (Spaces)").tag("leftSpace")
+                                Text("切換至右桌面 (Spaces)").tag("rightSpace")
+                            }
+                            .frame(width: 220)
                         }
                     }
                     .padding(.top, 4)
