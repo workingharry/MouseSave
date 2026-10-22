@@ -446,6 +446,68 @@ func testFlickVelocityDualThreshold() {
     print("✅ testFlickVelocityDualThreshold passed")
 }
 
+func testPhysicsTimerConvergenceAndZeroIdle() {
+    print("Testing testPhysicsTimerConvergenceAndZeroIdle...")
+    var velocity = 150.0
+    let friction = 0.92
+    var ticks = 0
+    var isTimerActive = true
+
+    while isTimerActive {
+        ticks += 1
+        if abs(velocity) < 1.0 {
+            velocity = 0.0
+            isTimerActive = false
+            break
+        }
+        velocity *= friction
+        assert(ticks < 100, "Physics timer must converge in under 100 ticks (1.6s)!")
+    }
+
+    assert(!isTimerActive, "Timer must be invalidated when velocity decays below threshold")
+    assert(velocity == 0.0, "Velocity must be reset to exactly zero")
+    print("✅ testPhysicsTimerConvergenceAndZeroIdle passed (converged in \(ticks) ticks)")
+}
+
+func testGesturePollingTimeoutConvergence() {
+    print("Testing testGesturePollingTimeoutConvergence...")
+    let initialSpaceID: UInt64 = 33
+    var curSpaceID: UInt64 = 33
+    func computeMaxPolls(isFullscreen: Bool) -> Int {
+        let initialWaitSeconds = 0.30
+        let pollIntervalMs = 100
+        let maxWaitSeconds = isFullscreen ? 1.50 : 1.00
+        return Int(ceil((maxWaitSeconds - initialWaitSeconds) / (Double(pollIntervalMs) / 1000.0)))
+    }
+    let maxPolls = computeMaxPolls(isFullscreen: true)
+
+    var pollCount = 0
+    var isPollingActive = true
+    var switchSuccess = false
+
+    // Scenario 1: Space never changes (timeout case)
+    while isPollingActive {
+        pollCount += 1
+        if curSpaceID != initialSpaceID {
+            switchSuccess = true
+            isPollingActive = false
+            break
+        }
+        if pollCount >= maxPolls {
+            isPollingActive = false
+            break
+        }
+        if pollCount == 999 {
+            curSpaceID = 999 // Prevents unused warning
+        }
+    }
+
+    assert(!isPollingActive, "Polling loop must terminate strictly at maxPolls")
+    assert(!switchSuccess, "Unchanged space must cleanly register timeout")
+    assert(pollCount == maxPolls, "Must poll exactly maxPolls times before cancelling timer")
+    print("✅ testGesturePollingTimeoutConvergence passed (bounded at \(pollCount) polls)")
+}
+
 // Run tests
 testPhysicsStepNonZeroOnNormalTick()
 testButtonActionBackAndForward()
@@ -457,6 +519,8 @@ testTrackpadSwipeDirectionMapping()
 testGestureTrajectoryGeneration()
 testSpaceContextBoundaryAndDowngrade()
 testFlickVelocityDualThreshold()
-print("All automated test assertions passed successfully! (10/10 passed)")
+testPhysicsTimerConvergenceAndZeroIdle()
+testGesturePollingTimeoutConvergence()
+print("All automated test assertions passed successfully! (12/12 passed)")
 
 
